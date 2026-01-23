@@ -1,0 +1,39 @@
+{
+	"name": "lms-sanggar-belajar-frontend",
+	"version": "1.0.0",
+	"description": "Frontend untuk LMS Sanggar Belajar",
+	"author": "Sanggar Belajar Team",
+	"private": true,
+	"scripts": {
+		"dev": "next dev",
+		"build": "next build",
+		"start": "next start",
+		"lint": "next lint",
+		"format": "prettier --write \"src/**/*.{ts,tsx}\"",
+		"type-check": "tsc --noEmit"
+	},
+	"dependencies": {
+		"axios": "^1.6.0",
+		"next": "^14.0.0",
+		"react": "^18.2.0",
+		"react-dom": "^18.2.0",
+		"zustand": "^4.4.0",
+		"tailwindcss": "^3.3.0",
+		"chart.js": "^4.4.0",
+		"react-chartjs-2": "^5.2.0",
+		"react-hot-toast": "^2.4.1",
+		"next-auth": "^4.24.0",
+		"xlsx": "^0.18.5"
+	},
+	"devDependencies": {
+		"@types/node": "^20.0.0",
+		"@types/react": "^18.2.0",
+		"@types/react-dom": "^18.2.0",
+		"typescript": "^5.1.0",
+		"prettier": "^2.8.3",
+		"eslint": "^8.0.0",
+		"eslint-config-next": "^14.0.0",
+		"autoprefixer": "^10.4.0",
+		"postcss": "^8.4.0"
+	}
+}

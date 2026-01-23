@@ -1,0 +1,690 @@
+"use client";
+
+import React, { useState, useEffect } from "react";
+import Link from "next/link";
+import { studentService, kelasService } from "@/lib/api/services";
+
+interface Student {
+	id: number;
+	nisn: string;
+	namaLengkap: string;
+	jenisKelamin: string;
+	kelas?: {
+		id: number;
+		nama: string;
+		tingkatRef?: {
+			nama: string;
+		};
+		tingkat?: string;
+	};
+	kelasId?: number;
+	level?: number;
+	poin?: number;
+	userId?: number;
+}
+
+interface Kelas {
+	id: number;
+	nama: string;
+	tingkatRef?: {
+		nama: string;
+	};
+	tingkat?: string;
+}
+
+export default function SiswaPage() {
+	const [students, setStudents] = useState<Student[]>([]);
+	const [kelasList, setKelasList] = useState<Kelas[]>([]);
+	const [loading, setLoading] = useState(true);
+	const [page, setPage] = useState(1);
+	const [limit] = useState(10);
+	const [total, setTotal] = useState(0);
+	const [searchQuery, setSearchQuery] = useState("");
+	const [filterKelas, setFilterKelas] = useState("");
+	const [showModal, setShowModal] = useState(false);
+	const [editingStudent, setEditingStudent] = useState<Student | null>(null);
+	const [formData, setFormData] = useState({
+		nisn: "",
+		namaLengkap: "",
+		kelas: "",
+		jenisKelamin: "L",
+	});
+	const [showImportModal, setShowImportModal] = useState(false);
+	const [importFile, setImportFile] = useState<File | null>(null);
+	const [importKelasOption, setImportKelasOption] = useState("with-kelas");
+
+	useEffect(() => {
+		setPage(1);
+	}, [searchQuery, filterKelas]);
+
+	useEffect(() => {
+		fetchStudents();
+		fetchKelasList();
+	}, [page, searchQuery, filterKelas]);
+
+	const fetchKelasList = async () => {
+		try {
+			const response = await kelasService.getKelasDropdown();
+			setKelasList(response.data || []);
+		} catch (error) {
+			console.error("Error fetching kelas:", error);
+		}
+	};
+
+	const fetchStudents = async () => {
+		try {
+			setLoading(true);
+			const response = await studentService.getAllStudents(
+				page,
+				limit,
+				searchQuery,
+			);
+			setStudents(response.data);
+			setTotal(response.pagination?.total || 0);
+		} catch (error) {
+			console.error("Error fetching students:", error);
+		} finally {
+			setLoading(false);
+		}
+	};
+
+	const resetLevel = async (studentId: number) => {
+		try {
+			await studentService.updateStudent(studentId, {
+				level: 1,
+				poin: 0,
+			} as any);
+			fetchStudents();
+			alert("Level berhasil direset");
+		} catch (error) {
+			console.error("Error resetting level:", error);
+			alert("Gagal mereset level");
+		}
+	};
+
+	const openModal = (student?: Student) => {
+		if (student) {
+			setEditingStudent(student);
+			const kelasValue =
+				typeof student.kelas === "object" ? student.kelas.id : student.kelas;
+			setFormData({
+				nisn: student.nisn,
+				namaLengkap: student.namaLengkap,
+				kelas: kelasValue ? kelasValue.toString() : "",
+				jenisKelamin: student.jenisKelamin,
+			});
+		} else {
+			setEditingStudent(null);
+			setFormData({
+				nisn: "",
+				namaLengkap: "",
+				kelas: "",
+				jenisKelamin: "L",
+			});
+		}
+		setShowModal(true);
+	};
+
+	const saveStudent = async () => {
+		if (!formData.nisn || !formData.namaLengkap) {
+			alert("NISN dan Nama Lengkap harus diisi");
+			return;
+		}
+		try {
+			if (editingStudent) {
+				await studentService.updateStudent(editingStudent.id, formData as any);
+				alert("Siswa berhasil diperbarui");
+			} else {
+				await studentService.createStudent(formData as any);
+				alert("Siswa berhasil ditambahkan");
+			}
+			setShowModal(false);
+			fetchStudents();
+		} catch (error) {
+			alert("Gagal menyimpan siswa");
+		}
+	};
+
+	const deleteStudent = async (studentId: number) => {
+		if (!confirm("Yakin ingin menghapus siswa ini?")) return;
+		try {
+			await studentService.deleteStudent(studentId);
+			alert("Siswa berhasil dihapus");
+			fetchStudents();
+		} catch (error) {
+			alert("Gagal menghapus siswa");
+		}
+	};
+
+	const downloadTemplate = async () => {
+		try {
+			const XLSX = await import("xlsx");
+			const templateData: any[] = [];
+
+			if (importKelasOption === "with-kelas") {
+				templateData.push({
+					NISN: "001",
+					"Nama Lengkap": "Contoh Siswa 1",
+					"Jenis Kelamin": "L",
+					Kelas: "1A",
+				});
+				templateData.push({
+					NISN: "002",
+					"Nama Lengkap": "Contoh Siswa 2",
+					"Jenis Kelamin": "P",
+					Kelas: "1B",
+				});
+			} else {
+				templateData.push({
+					NISN: "001",
+					"Nama Lengkap": "Contoh Siswa 1",
+					"Jenis Kelamin": "L",
+				});
+				templateData.push({
+					NISN: "002",
+					"Nama Lengkap": "Contoh Siswa 2",
+					"Jenis Kelamin": "P",
+				});
+			}
+
+			const workbook = XLSX.utils.book_new();
+			const worksheet = XLSX.utils.json_to_sheet(templateData);
+			XLSX.utils.book_append_sheet(workbook, worksheet, "Siswa");
+			XLSX.writeFile(workbook, `template_siswa_${importKelasOption}.xlsx`);
+		} catch (error) {
+			console.error("Error downloading template", error);
+			alert("Gagal mendownload template");
+		}
+	};
+
+	const handleImport = async () => {
+		if (!importFile) {
+			alert("Pilih file terlebih dahulu");
+			return;
+		}
+		try {
+			const XLSX = await import("xlsx");
+			const reader = new FileReader();
+			reader.onload = async (e) => {
+				try {
+					const data = new Uint8Array(e.target?.result as ArrayBuffer);
+					const workbook = XLSX.read(data, { type: "array" });
+					const worksheet = workbook.Sheets[workbook.SheetNames[0]];
+					const jsonData: any[] = XLSX.utils.sheet_to_json(worksheet);
+
+					const dataToImport = [];
+
+					for (let i = 0; i < jsonData.length; i++) {
+						const row = jsonData[i];
+						const nisn = String(row.NISN || "").trim();
+						const namaLengkap = String(row["Nama Lengkap"] || "").trim();
+						const jenisKelamin = String(row["Jenis Kelamin"] || "")
+							.trim()
+							.toUpperCase();
+						const kelas = String(row.Kelas || "").trim();
+
+						if (!nisn || nisn.length < 1) {
+							alert(`Baris ${i + 2}: NISN tidak valid`);
+							return;
+						}
+
+						if (!namaLengkap || namaLengkap.length < 3) {
+							alert(`Baris ${i + 2}: Nama lengkap minimal 3 karakter`);
+							return;
+						}
+
+						if (!["L", "P"].includes(jenisKelamin)) {
+							alert(`Baris ${i + 2}: Jenis Kelamin harus L atau P`);
+							return;
+						}
+
+						const importData: any = {
+							nisn,
+							namaLengkap,
+							jenisKelamin,
+						};
+
+						if (importKelasOption === "with-kelas" && kelas) {
+							importData.kelas = kelas;
+						}
+
+						dataToImport.push(importData);
+					}
+
+					if (dataToImport.length === 0) {
+						alert("Tidak ada data valid untuk diimport");
+						return;
+					}
+
+					// Create FormData with file-like object
+					const formData = new FormData();
+					const jsonString = JSON.stringify(dataToImport);
+					const blob = new Blob([jsonString], { type: "application/json" });
+					formData.append("file", blob, "data.json");
+					formData.append("kelasOption", importKelasOption);
+
+					await studentService.importStudents(
+						formData as any,
+						importKelasOption,
+					);
+					alert(`Berhasil mengimport ${dataToImport.length} data siswa`);
+					setShowImportModal(false);
+					setImportFile(null);
+					fetchStudents();
+				} catch (error: any) {
+					alert(
+						error.response?.data?.message ||
+							error.message ||
+							"Gagal mengimpor siswa",
+					);
+				}
+			};
+			reader.readAsArrayBuffer(importFile);
+		} catch (error: any) {
+			alert(error.message || "Gagal mengimpor siswa");
+		}
+	};
+
+	const totalPages = Math.ceil(total / limit);
+
+	return (
+		<div className="p-6 space-y-6">
+			<div className="flex justify-between items-center mb-2">
+				<div>
+					<h1 className="text-3xl font-bold text-gray-900">👨‍🎓 Data Siswa</h1>
+					<p className="text-gray-600 text-sm mt-1">
+						Total: {total} siswa terdaftar
+					</p>
+				</div>
+			</div>
+
+			{/* Navigation Tabs */}
+			<div className="bg-white rounded-lg shadow mb-6 border-b-2 border-gray-200">
+				<div className="flex flex-wrap">
+					<Link
+						href="/admin/siswa"
+						className="px-6 py-4 text-gray-700 font-semibold border-b-4 border-blue-600 hover:bg-gray-50"
+					>
+						👨‍🎓 Data Siswa
+					</Link>
+					<Link
+						href="/admin/guru"
+						className="px-6 py-4 text-gray-700 font-semibold border-b-4 border-transparent hover:bg-gray-50"
+					>
+						👨‍🏫 Data Guru
+					</Link>
+					<Link
+						href="/admin/kelas"
+						className="px-6 py-4 text-gray-700 font-semibold border-b-4 border-transparent hover:bg-gray-50"
+					>
+						🏫 Data Kelas
+					</Link>
+				</div>
+			</div>
+
+			{/* Search and Filter */}
+			<div className="bg-white rounded-lg shadow-md p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-4">
+				<div className="flex-1 w-full">
+					<input
+						type="text"
+						placeholder="🔍 Cari NISN, nama, atau jenis kelamin..."
+						value={searchQuery}
+						onChange={(e) => setSearchQuery(e.target.value)}
+						className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+					/>
+				</div>
+				<div className="w-full sm:w-48">
+					<select
+						value={filterKelas}
+						onChange={(e) => setFilterKelas(e.target.value)}
+						className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+					>
+						<option value="">📚 Semua Kelas</option>
+						{kelasList.map((kelas) => (
+							<option key={kelas.id} value={kelas.id}>
+								{kelas.nama} ({kelas.tingkatRef?.nama || kelas.tingkat || "-"})
+							</option>
+						))}
+					</select>
+				</div>
+				{(searchQuery || filterKelas) && (
+					<button
+						onClick={() => {
+							setSearchQuery("");
+							setFilterKelas("");
+						}}
+						className="px-4 py-2 bg-gray-300 text-gray-700 rounded-lg hover:bg-gray-400 font-medium transition text-sm"
+					>
+						✕ Reset
+					</button>
+				)}
+			</div>
+
+			<div className="flex justify-between items-center">
+				<div>{/* Empty div for spacing */}</div>
+				<div className="space-x-2">
+					<button
+						onClick={() => setShowImportModal(true)}
+						className="px-4 py-2 bg-green-600 text-white rounded-lg hover:bg-green-700 font-medium shadow-md transition"
+					>
+						⬇️ Impor Excel
+					</button>
+					<button
+						onClick={() => openModal()}
+						className="px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 font-medium shadow-md transition"
+					>
+						➕ Tambah Siswa
+					</button>
+				</div>
+			</div>
+
+			{loading ? (
+				<div className="text-center py-12">
+					<p className="text-gray-500">Loading...</p>
+				</div>
+			) : (
+				<div className="bg-white rounded-lg shadow-md overflow-hidden">
+					<table className="min-w-full">
+						<thead className="bg-gradient-to-r from-blue-600 to-blue-700 text-white">
+							<tr>
+								<th className="px-6 py-4 text-left text-sm font-semibold">
+									No
+								</th>
+								<th className="px-6 py-4 text-left text-sm font-semibold">
+									NISN
+								</th>
+								<th className="px-6 py-4 text-left text-sm font-semibold">
+									Nama Lengkap
+								</th>
+								<th className="px-6 py-4 text-left text-sm font-semibold">
+									JK
+								</th>
+								<th className="px-6 py-4 text-left text-sm font-semibold">
+									Kelas
+								</th>
+								<th className="px-6 py-4 text-left text-sm font-semibold">
+									Level
+								</th>
+								<th className="px-6 py-4 text-left text-sm font-semibold">
+									Poin
+								</th>
+								<th className="px-6 py-4 text-left text-sm font-semibold">
+									Aksi
+								</th>
+							</tr>
+						</thead>
+						<tbody className="divide-y divide-gray-200">
+							{students.map((student, index) => (
+								<tr key={student.id} className="hover:bg-gray-50 transition">
+									<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+										{index + 1 + (page - 1) * limit}
+									</td>
+									<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-700">
+										{student.nisn}
+									</td>
+									<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+										{student.namaLengkap}
+									</td>
+									<td className="px-6 py-4 whitespace-nowrap text-sm text-gray-700">
+										{student.jenisKelamin === "L"
+											? "👦 Laki-laki"
+											: "👧 Perempuan"}
+									</td>
+									<td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-700">
+										{typeof student.kelas === "object"
+											? student.kelas.nama
+											: student.kelas}
+									</td>
+									<td className="px-6 py-4 whitespace-nowrap">
+										<span className="px-3 py-1 bg-blue-100 text-blue-800 text-sm font-semibold rounded-full">
+											Level {student.level}
+										</span>
+									</td>
+									<td className="px-6 py-4 whitespace-nowrap text-sm font-semibold text-yellow-600">
+										⭐ {student.poin}
+									</td>
+									<td className="px-6 py-4 whitespace-nowrap text-sm space-x-1 flex items-center">
+										<Link
+											href={`/admin/users/${student.userId}`}
+											className="px-3 py-1 bg-indigo-500 text-white rounded-lg hover:bg-indigo-600 font-medium text-xs transition shadow"
+											title="Lihat detail"
+										>
+											👁️ Detail
+										</Link>
+										<button
+											onClick={() => openModal(student)}
+											className="px-3 py-1 bg-blue-500 text-white rounded-lg hover:bg-blue-600 font-medium text-xs transition shadow"
+										>
+											✏️ Ubah
+										</button>
+										<button
+											onClick={() => resetLevel(student.id)}
+											className="px-3 py-1 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 font-medium text-xs transition shadow"
+										>
+											🔄 Reset Level
+										</button>
+										<button
+											onClick={() => deleteStudent(student.id)}
+											className="px-3 py-1 bg-red-500 text-white rounded-lg hover:bg-red-600 font-medium text-xs transition shadow"
+										>
+											🗑️ Hapus
+										</button>
+									</td>
+								</tr>
+							))}
+						</tbody>
+					</table>
+
+					<div className="flex items-center justify-between px-6 py-4 bg-gray-50 border-t border-gray-200">
+						<div className="text-sm text-gray-600">
+							Halaman <span className="font-semibold">{page}</span> dari{" "}
+							<span className="font-semibold">{totalPages}</span>
+						</div>
+						<div className="space-x-2">
+							<button
+								disabled={page === 1}
+								onClick={() => setPage(page - 1)}
+								className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition font-medium text-sm"
+							>
+								← Sebelumnya
+							</button>
+							<button
+								disabled={page >= totalPages || total === 0}
+								onClick={() => setPage(page + 1)}
+								className="px-4 py-2 border border-gray-300 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed hover:bg-gray-50 transition font-medium text-sm"
+							>
+								Selanjutnya →
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Add/Edit Modal */}
+			{showModal && (
+				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+					<div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full">
+						<div className="flex items-center justify-between mb-6">
+							<h2 className="text-2xl font-bold text-gray-900">
+								{editingStudent ? "✏️ Edit Siswa" : "➕ Tambah Siswa"}
+							</h2>
+							<button
+								onClick={() => setShowModal(false)}
+								className="text-gray-400 hover:text-gray-600 text-2xl"
+							>
+								×
+							</button>
+						</div>
+
+						<div className="space-y-4 mb-6">
+							<div>
+								<label className="block text-sm font-semibold text-gray-700 mb-2">
+									NISN
+								</label>
+								<input
+									type="text"
+									placeholder="Masukkan NISN"
+									value={formData.nisn}
+									onChange={(e) =>
+										setFormData({ ...formData, nisn: e.target.value })
+									}
+									className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+								/>
+							</div>
+							<div>
+								<label className="block text-sm font-semibold text-gray-700 mb-2">
+									Nama Lengkap
+								</label>
+								<input
+									type="text"
+									placeholder="Masukkan nama lengkap"
+									value={formData.namaLengkap}
+									onChange={(e) =>
+										setFormData({ ...formData, namaLengkap: e.target.value })
+									}
+									className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+								/>
+							</div>
+							<div>
+								<label className="block text-sm font-semibold text-gray-700 mb-2">
+									Kelas
+								</label>
+								<select
+									value={formData.kelas}
+									onChange={(e) =>
+										setFormData({ ...formData, kelas: e.target.value })
+									}
+									className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+								>
+									<option value="">-- Pilih Kelas --</option>
+									{kelasList.map((k) => (
+										<option key={k.id} value={k.id}>
+											{k.nama} ({k.tingkatRef?.nama || k.tingkat || "-"})
+										</option>
+									))}
+								</select>
+							</div>
+							<div>
+								<label className="block text-sm font-semibold text-gray-700 mb-2">
+									Jenis Kelamin
+								</label>
+								<select
+									value={formData.jenisKelamin}
+									onChange={(e) =>
+										setFormData({
+											...formData,
+											jenisKelamin: e.target.value,
+										})
+									}
+									className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
+								>
+									<option value="L">Laki-laki</option>
+									<option value="P">Perempuan</option>
+								</select>
+							</div>
+						</div>
+
+						<div className="flex gap-3">
+							<button
+								onClick={() => setShowModal(false)}
+								className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
+							>
+								Batal
+							</button>
+							<button
+								onClick={saveStudent}
+								className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition shadow-md"
+							>
+								{editingStudent ? "Perbarui" : "Simpan"}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
+
+			{/* Import Modal */}
+			{showImportModal && (
+				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+					<div className="bg-white rounded-xl shadow-2xl p-8 max-w-md w-full">
+					<h2 className="text-2xl font-bold text-gray-900 mb-1">
+						Import Siswa dari Excel
+					</h2>
+					<p className="text-gray-600 text-sm mb-6">
+						Siswa akan ditambahkan ke semester: <span className="font-semibold">Semester Genap - 2025/2026</span>
+					</p>
+
+					{/* Step 1: Download Template */}
+					<div className="mb-6">
+						<h3 className="font-semibold text-gray-900 text-sm mb-3">1. Download Template Excel</h3>
+						<button
+							onClick={downloadTemplate}
+							className="w-full px-4 py-2 bg-blue-100 text-blue-700 rounded-lg hover:bg-blue-200 font-medium text-sm transition"
+						>
+							📥 Download Template
+						</button>
+						<p className="text-xs text-gray-600 mt-2">
+							Template berisi kolom: Nama, Email, NIS, Password
+						</p>
+					</div>
+
+					{/* Step 2: Upload File */}
+					<div className="mb-6">
+						<h3 className="font-semibold text-gray-900 text-sm mb-3">2. Upload File Excel</h3>
+						<label className="block w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg text-center cursor-pointer hover:border-blue-500 transition">
+							<input
+								type="file"
+								accept=".xlsx,.xls"
+								onChange={(e) => setImportFile(e.target.files?.[0] || null)}
+								className="hidden"
+							/>
+							<div className="text-sm">
+								{importFile ? (
+									<span className="text-green-600 font-medium">✓ {importFile.name}</span>
+								) : (
+									<span className="text-gray-600">📁 Klik untuk memilih file atau drag & drop</span>
+								)}
+							</div>
+						</label>
+					</div>
+
+					{/* Step 3: Kelas Opsional */}
+					<div className="mb-6">
+						<h3 className="font-semibold text-gray-900 text-sm mb-3">3. Kelas (Opsional)</h3>
+						<select
+							value={importKelasOption}
+							onChange={(e) => setImportKelasOption(e.target.value)}
+							className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+						>
+							<option value="">Tanpa kelas</option>
+							<option value="with-kelas">Dengan kelas</option>
+						</select>
+						<p className="text-xs text-gray-600 mt-2">
+							Semua siswa yang diimpor akan masuk ke kelas yang dipilih
+						</p>
+					</div>
+
+					{/* Informasi Penting */}
+					<div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-6">
+						<p className="font-semibold text-blue-900 text-sm mb-2">📋 Informasi Penting:</p>
+						<ul className="text-xs text-blue-800 space-y-1">
+							<li>• Siswa dengan NIS atau Email yang sama akan dilewati</li>
+							<li>• Password akan di-hash otomatis oleh sistem</li>
+							<li>• File maksimal 5MB</li>
+						</ul>
+					</div>
+
+					<div className="flex gap-3">
+						<button
+							onClick={() => setShowImportModal(false)}
+							className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-lg hover:bg-gray-50 font-medium transition"
+						>
+							Batal
+						</button>
+						<button
+							onClick={handleImport}
+							className="flex-1 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-semibold transition shadow-md"
+						>
+							📥 Import Siswa
+						</button>
+					</div>
+				</div>

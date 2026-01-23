@@ -1,0 +1,225 @@
+/* ===================================
+   RESPONSIVE UTILITIES & IMPROVEMENTS
+   =================================== */
+
+/* Mobile-first responsive typography */
+@media (max-width: 640px) {
+	h1 {
+		@apply text-2xl;
+	}
+
+	h2 {
+		@apply text-xl;
+	}
+
+	h3 {
+		@apply text-lg;
+	}
+
+	p {
+		@apply text-sm;
+	}
+
+	button,
+	input,
+	select,
+	textarea {
+		@apply text-base min-h-10;
+	}
+}
+
+/* Better spacing on mobile */
+@media (max-width: 768px) {
+	.container {
+		@apply px-4;
+	}
+
+	.modal {
+		@apply p-4;
+	}
+
+	table {
+		@apply text-sm;
+	}
+
+	th,
+	td {
+		@apply px-2 py-2;
+	}
+}
+
+/* Interactive elements feedback */
+button,
+a,
+input,
+select,
+textarea {
+	@apply transition-all duration-200;
+}
+
+button:hover:not(:disabled) {
+	@apply transform scale-105;
+}
+
+button:active:not(:disabled) {
+	@apply transform scale-95;
+}
+
+button:disabled {
+	@apply opacity-50 cursor-not-allowed;
+}
+
+/* Form improvements */
+input,
+select,
+textarea {
+	@apply px-4 py-2 border border-gray-300 rounded-lg;
+	@apply focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent;
+	@apply transition-all duration-200;
+}
+
+input::placeholder {
+	@apply text-gray-400;
+}
+
+/* Table responsive */
+@media (max-width: 768px) {
+	table {
+		@apply block;
+	}
+
+	thead {
+		@apply hidden;
+	}
+
+	tbody,
+	tr {
+		@apply block;
+	}
+
+	td {
+		@apply block text-right py-3 px-3;
+		@apply before:content-[attr(data-label)] before:font-bold before:float-left before:text-gray-700;
+	}
+
+	tr {
+		@apply mb-4 border border-gray-300 rounded;
+	}
+}
+
+/* Responsive images */
+img {
+	@apply max-w-full h-auto;
+}
+
+/* Better card/container shadows on mobile */
+@media (max-width: 640px) {
+	.shadow,
+	.shadow-md,
+	.shadow-lg {
+		@apply shadow-sm;
+	}
+}
+
+/* Smooth scrolling */
+html {
+	scroll-behavior: smooth;
+}
+
+/* Focus visible for accessibility */
+:focus-visible {
+	@apply ring-2 ring-blue-400 ring-offset-2;
+}
+
+/* Loader animation improvements - using Tailwind's built-in animate-spin */
+
+/* Tooltip styles */
+[data-tooltip] {
+	@apply relative cursor-help;
+}
+
+[data-tooltip]:hover::after {
+	@apply absolute left-0 bottom-full mb-2 px-3 py-1 text-xs text-white bg-gray-900 rounded whitespace-nowrap;
+	content: attr(data-tooltip);
+	z-index: 1000;
+}
+
+/* Better badge styles */
+.badge {
+	@apply inline-flex items-center px-3 py-1 rounded-full text-xs font-semibold;
+}
+
+.badge-blue {
+	@apply bg-blue-100 text-blue-800;
+}
+
+.badge-green {
+	@apply bg-green-100 text-green-800;
+}
+
+.badge-red {
+	@apply bg-red-100 text-red-800;
+}
+
+.badge-yellow {
+	@apply bg-yellow-100 text-yellow-800;
+}
+
+/* Animation utilities */
+@keyframes slideInDown {
+	from {
+		transform: translateY(-100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+@keyframes slideInUp {
+	from {
+		transform: translateY(100%);
+		opacity: 0;
+	}
+	to {
+		transform: translateY(0);
+		opacity: 1;
+	}
+}
+
+@keyframes fadeIn {
+	from {
+		opacity: 0;
+	}
+	to {
+		opacity: 1;
+	}
+}
+
+.animate-slideInDown {
+	animation: slideInDown 0.3s ease-out;
+}
+
+.animate-slideInUp {
+	animation: slideInUp 0.3s ease-out;
+}
+
+.animate-fadeIn {
+	animation: fadeIn 0.3s ease-out;
+}
+
+/* Grid responsive utilities */
+.grid-responsive {
+	@apply grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4;
+}
+
+/* Flex responsive utilities */
+.flex-responsive {
+	@apply flex flex-col sm:flex-row gap-4;
+}
+
+/* Container max-width */
+.container-responsive {
+	@apply w-full max-w-6xl mx-auto px-4 sm:px-6 md:px-8;
+}
