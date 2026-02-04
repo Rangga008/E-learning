@@ -7,17 +7,24 @@ import {
 	UpdateDateColumn,
 } from "typeorm";
 import { Materi } from "./materi.entity";
+import { Tugas } from "./tugas.entity";
 
 @Entity("soal_esai")
 export class SoalEsai {
 	@PrimaryGeneratedColumn()
 	id: number;
 
-	@ManyToOne(() => Materi)
+	@Column({ nullable: true })
+	materiId: number;
+
+	@Column({ nullable: true })
+	tugasId: number;
+
+	@ManyToOne(() => Materi, { nullable: true })
 	materi: Materi;
 
-	@Column()
-	materiId: number;
+	@ManyToOne(() => Tugas, { nullable: true })
+	tugas: Tugas;
 
 	@Column("text")
 	pertanyaan: string;

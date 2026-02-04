@@ -1,18 +1,26 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { authService } from "@/lib/api/services";
 import { useAuthStore } from "@/store/auth.store";
 import Link from "next/link";
 
-export default function LoginPage() {
+function LoginContent() {
 	const router = useRouter();
+	const searchParams = useSearchParams();
+	const reason = searchParams.get("reason");
 	const setUser = useAuthStore((state) => state.setUser);
 	const setToken = useAuthStore((state) => state.setToken);
 	const [loading, setLoading] = useState(false);
 	const [error, setError] = useState("");
 	const [formData, setFormData] = useState({ username: "", password: "" });
+
+	useEffect(() => {
+		if (reason === "token_expired") {
+			setError("Token Anda telah kadaluarsa. Silakan login kembali.");
+		}
+	}, [reason]);
 
 	const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
 		const { name, value } = e.target;
@@ -45,12 +53,12 @@ export default function LoginPage() {
 
 			// Route berdasarkan role
 			const roleRoute: Record<string, string> = {
-				siswa: "/student/dashboard",
-				guru: "/teacher/dashboard",
+				siswa: "/siswa/dashboard",
+				guru: "/guru/dashboard",
 				admin: "/admin/dashboard",
 			};
 
-			router.push(roleRoute[userData.role as string] || "/student/dashboard");
+			router.push(roleRoute[userData.role as string] || "/siswa/dashboard");
 		} catch (err: any) {
 			console.error("❌ Login error:", err);
 			setError(err.response?.data?.message || "Login gagal");
@@ -122,5 +130,19 @@ export default function LoginPage() {
 				</div>
 			</div>
 		</div>
+	);
+}
+
+export default function LoginPage() {
+	return (
+		<Suspense
+			fallback={
+				<div className="min-h-screen flex items-center justify-center">
+					Loading...
+				</div>
+			}
+		>
+			<LoginContent />
+		</Suspense>
 	);
 }

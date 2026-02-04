@@ -4,7 +4,10 @@ import {
 	PrimaryGeneratedColumn,
 	CreateDateColumn,
 	UpdateDateColumn,
+	OneToOne,
+	JoinColumn,
 } from "typeorm";
+import { Guru } from "../../guru/entities/guru.entity";
 
 export enum UserRole {
 	SISWA = "siswa",
@@ -34,6 +37,13 @@ export class User {
 
 	@Column({ default: true })
 	isActive: boolean;
+
+	@OneToOne(() => Guru, (guru) => guru.user, { nullable: true })
+	@JoinColumn({ name: "guruId" })
+	guru: Guru;
+
+	@Column({ nullable: true })
+	guruId: number;
 
 	@CreateDateColumn()
 	createdAt: Date;

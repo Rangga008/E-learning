@@ -7,10 +7,12 @@ import {
 	OneToMany,
 	ManyToMany,
 	ManyToOne,
+	OneToOne,
 	JoinColumn,
 } from "typeorm";
 import { Kelas } from "../../kelas/entities/kelas.entity";
 import { MataPelajaran } from "../../elearning/entities/mata-pelajaran.entity";
+import { User } from "../../auth/entities/user.entity";
 
 @Entity("guru")
 export class Guru {
@@ -38,6 +40,9 @@ export class Guru {
 
 	@Column({ nullable: true })
 	userId: number;
+
+	@OneToOne(() => User, (user) => user.guru, { nullable: true })
+	user: User;
 
 	@OneToMany(() => Kelas, (kelas) => kelas.guruWali)
 	kelasWaliList: Kelas[];

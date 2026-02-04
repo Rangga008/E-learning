@@ -129,9 +129,15 @@ export default function GuruDetailPage() {
 			return;
 		}
 
+		if (!guru?.userId) {
+			logger.error("Reset Password", { error: "User ID not found" });
+			showError("User ID tidak ditemukan. Hubungi administrator.");
+			return;
+		}
+
 		try {
 			await axios.put(
-				`${process.env.NEXT_PUBLIC_API_URL}/admin/users/${guru?.userId}/reset-password`,
+				`${process.env.NEXT_PUBLIC_API_URL}/admin/users/${guru.userId}/reset-password`,
 				{ newPassword: newPassword },
 				{
 					headers: {
@@ -139,13 +145,17 @@ export default function GuruDetailPage() {
 					},
 				},
 			);
-			logger.success("Reset Password", { userId: guru?.userId });
+			logger.success("Reset Password", { userId: guru.userId });
 			showSuccess("Password berhasil diubah");
 			setShowPasswordModal(false);
 			setNewPassword("");
-		} catch (error) {
+		} catch (error: any) {
 			logger.error("Reset Password", { error });
-			showError("Gagal mengubah password");
+			if (error.response?.status === 404) {
+				showError("User tidak ditemukan di sistem");
+			} else {
+				showError("Gagal mengubah password");
+			}
 		}
 	};
 

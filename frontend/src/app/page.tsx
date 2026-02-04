@@ -12,11 +12,11 @@ export default function Home() {
 		// Jika user sudah login, redirect ke dashboard sesuai role
 		if (user) {
 			const roleRoute: Record<string, string> = {
-				siswa: "/student/dashboard",
-				guru: "/teacher/dashboard",
+				siswa: "/siswa/dashboard",
+				guru: "/guru/dashboard",
 				admin: "/admin/dashboard",
 			};
-			router.push(roleRoute[user.role as string] || "/student/dashboard");
+			router.push(roleRoute[user.role as string] || "/siswa/dashboard");
 		}
 	}, [user, router]);
 
@@ -27,7 +27,9 @@ export default function Home() {
 					<div className="text-6xl mb-4">📚</div>
 					<h1 className="text-5xl font-bold mb-4">LMS Sanggar Belajar</h1>
 					<p className="text-2xl mb-2">Belajar Tanpa Batas</p>
-					<p className="text-gray-100 text-lg">Platform Pembelajaran Terpadu untuk Semua</p>
+					<p className="text-gray-100 text-lg">
+						Platform Pembelajaran Terpadu untuk Semua
+					</p>
 				</div>
 
 				<div className="space-x-4 mt-8">

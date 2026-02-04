@@ -2,7 +2,7 @@
 
 **Sistem Manajemen Pembelajaran Digital - "Belajar Tanpa Batas"**
 
-![Status](https://img.shields.io/badge/Status-40%25_Complete-yellow)
+![Status](https://img.shields.io/badge/Status-70%25_Complete-orange)
 ![Build](https://img.shields.io/badge/Build-Passing-green)
 ![Version](https://img.shields.io/badge/Version-1.0.0-blue)
 ![License](https://img.shields.io/badge/License-MIT-green)

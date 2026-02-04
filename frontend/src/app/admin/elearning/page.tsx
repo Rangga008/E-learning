@@ -73,6 +73,21 @@ export default function ELearningPage() {
 			return;
 		}
 
+		// Check for duplicate (case-insensitive) when creating new
+		if (!editingId) {
+			const isDuplicate = mataPelajaran.some(
+				(m) => m.nama.toLowerCase() === formData.nama.toLowerCase(),
+			);
+			if (isDuplicate) {
+				logger.error("Save Mata Pelajaran", {
+					error: "Duplicate nama",
+					nama: formData.nama,
+				});
+				showError(`Mata pelajaran "${formData.nama}" sudah ada`);
+				return;
+			}
+		}
+
 		try {
 			if (editingId) {
 				// Update existing
@@ -93,9 +108,17 @@ export default function ELearningPage() {
 			setShowEditModal(false);
 			setEditingId(null);
 			fetchMataPelajaran();
-		} catch (error) {
+		} catch (error: any) {
 			logger.error("Save Mata Pelajaran", { error });
-			showError("Gagal menyimpan mata pelajaran");
+			// Handle duplicate key error from backend
+			if (
+				error.response?.status === 400 ||
+				error.message?.includes("Duplicate")
+			) {
+				showError(`Mata pelajaran "${formData.nama}" sudah ada`);
+			} else {
+				showError("Gagal menyimpan mata pelajaran");
+			}
 		}
 	};
 

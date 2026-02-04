@@ -173,7 +173,7 @@ function CreateUserContent() {
 						<form onSubmit={handleSubmit} className="space-y-6">
 							{/* Role Selection - Large Card */}
 							<div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-lg border-2 border-blue-200">
-								<label className="block text-sm font-bold text-gray-700 mb-4 flex items-center gap-2">
+								<label className="flex text-sm font-bold text-gray-700 mb-4 items-center gap-2">
 									<span className="text-lg">👤</span> Tipe User
 								</label>
 								<div className="grid grid-cols-3 gap-3">

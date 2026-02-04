@@ -6,10 +6,31 @@ import { useAuthStore } from "@/store/auth.store";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
 	const restoreSession = useAuthStore((state) => state.restoreSession);
+	const clearSession = useAuthStore((state) => state.clearSession);
 
 	useEffect(() => {
 		restoreSession();
-	}, [restoreSession]);
+
+		// Listen for token expiry events from apiClient interceptor
+		const handleAuthExpired = () => {
+			console.warn("Token expired, clearing session and redirecting...");
+			clearSession();
+			// Ensure redirect happens
+			if (
+				typeof window !== "undefined" &&
+				!window.location.pathname.startsWith("/auth/login")
+			) {
+				setTimeout(() => {
+					window.location.href = "/auth/login?reason=token_expired";
+				}, 50);
+			}
+		};
+
+		window.addEventListener("auth-expired", handleAuthExpired);
+		return () => {
+			window.removeEventListener("auth-expired", handleAuthExpired);
+		};
+	}, [restoreSession, clearSession]);
 
 	return (
 		<html lang="id">

@@ -10,12 +10,15 @@ import * as bcrypt from "bcryptjs";
 import { User } from "../entities/user.entity";
 import { LoginDto } from "../dtos/login.dto";
 import { RegisterDto } from "../dtos/register.dto";
+import { Guru } from "../../guru/entities/guru.entity";
 
 @Injectable()
 export class AuthService {
 	constructor(
 		@InjectRepository(User)
 		private userRepository: Repository<User>,
+		@InjectRepository(Guru)
+		private guruRepository: Repository<Guru>,
 		private jwtService: JwtService,
 	) {}
 
@@ -69,6 +72,7 @@ export class AuthService {
 			console.log("🔑 Login attempt:", loginDto.username);
 			const user = await this.userRepository.findOne({
 				where: { username: loginDto.username },
+				relations: ["guru"],
 			});
 
 			if (!user) {
@@ -93,20 +97,38 @@ export class AuthService {
 				throw new UnauthorizedException("Username atau password salah");
 			}
 
+			// Fetch guru data FIRST if role is guru
+			let guruId = user.guruId || null;
+			let guruData = null;
+
+			if (user.role === "guru") {
+				console.log("📚 Fetching guru data...");
+				guruData = await this.guruRepository.findOne({
+					where: { userId: user.id },
+					relations: ["mataPelajaran", "kelasWaliList", "kelasMapelList"],
+				});
+
+				if (guruData) {
+					guruId = guruData.id;
+					console.log("✓ Guru found, ID:", guruId);
+				}
+			}
+
 			const payload = {
 				id: user.id,
 				username: user.username,
 				role: user.role,
+				guruId: guruId,
 			};
 
-			console.log("🔑 Generating JWT token...");
+			console.log("🔑 Generating JWT token with guruId:", guruId);
 			const access_token = this.jwtService.sign(payload, {
 				expiresIn: "24h",
 			});
 
 			console.log("🔑 Token generated, returning response...");
 			// Return user tanpa password
-			const userResponse = {
+			const userResponse: any = {
 				id: user.id,
 				username: user.username,
 				email: user.email,
@@ -116,6 +138,21 @@ export class AuthService {
 				createdAt: user.createdAt,
 				updatedAt: user.updatedAt,
 			};
+
+			// Add guru data if we fetched it earlier
+			if (user.role === "guru" && guruData) {
+				userResponse.guru = {
+					id: guruData.id,
+					nip: guruData.nip,
+					namaLengkap: guruData.namaLengkap,
+					mataPelajaranId: guruData.mataPelajaranId,
+					mataPelajaran: guruData.mataPelajaran,
+					kelasWali: guruData.kelasWali,
+					kelasMapel: guruData.kelasMapel,
+					kelasWaliList: guruData.kelasWaliList,
+					kelasMapelList: guruData.kelasMapelList,
+				};
+			}
 
 			const response = {
 				access_token,

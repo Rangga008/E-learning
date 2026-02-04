@@ -21,4 +21,36 @@ apiClient.interceptors.request.use((config) => {
 	return config;
 });
 
+// Handle 401 errors (token expired or invalid)
+apiClient.interceptors.response.use(
+	(response) => response,
+	(error) => {
+		if (error.response?.status === 401) {
+			// Token invalid or expired
+			if (typeof window !== "undefined") {
+				// Clear auth data from localStorage immediately
+				localStorage.removeItem("token");
+				localStorage.removeItem("user");
+
+				// Dispatch event to trigger auth store update
+				try {
+					const event = new Event("auth-expired");
+					window.dispatchEvent(event);
+				} catch (e) {
+					console.error("Failed to dispatch auth-expired event:", e);
+				}
+
+				// Redirect to login ONLY if not already there
+				// Use setTimeout to allow event to propagate first
+				if (!window.location.pathname.startsWith("/auth/login")) {
+					setTimeout(() => {
+						window.location.href = "/auth/login?reason=token_expired";
+					}, 100);
+				}
+			}
+		}
+		return Promise.reject(error);
+	},
+);
+
 export default apiClient;

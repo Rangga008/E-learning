@@ -11,6 +11,7 @@ import {
 	UploadedFile,
 	UseGuards,
 	BadRequestException,
+	Request,
 } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { GuruService } from "../services/guru.service";
@@ -40,6 +41,12 @@ export class GuruController {
 		const pageNum = parseInt(page) || 1;
 		const limitNum = parseInt(limit) || 10;
 		return await this.guruService.findAll(pageNum, limitNum);
+	}
+
+	@Get("mata-pelajaran")
+	@Roles("guru")
+	async getMataPelajaran(@Request() req) {
+		return await this.guruService.getMataPelajaranByUserId(req.user.id);
 	}
 
 	@Get("kelas/:kelas")

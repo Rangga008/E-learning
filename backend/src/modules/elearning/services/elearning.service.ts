@@ -4,13 +4,14 @@ import {
 	BadRequestException,
 } from "@nestjs/common";
 import { InjectRepository } from "@nestjs/typeorm";
-import { Repository } from "typeorm";
+import { Repository, In } from "typeorm";
 import { MataPelajaran } from "../entities/mata-pelajaran.entity";
 import { Materi } from "../entities/materi.entity";
 import { SoalEsai } from "../entities/soal-esai.entity";
 import { JawabanEsai } from "../entities/jawaban-esai.entity";
 import { Kelas } from "../../kelas/entities/kelas.entity";
 import { Guru } from "../../guru/entities/guru.entity";
+import { PesertaDidik } from "../../peserta-didik/entities/peserta-didik.entity";
 
 @Injectable()
 export class ElearningService {
@@ -27,6 +28,8 @@ export class ElearningService {
 		private kelasRepository: Repository<Kelas>,
 		@InjectRepository(Guru)
 		private guruRepository: Repository<Guru>,
+		@InjectRepository(PesertaDidik)
+		private pesertaDidikRepository: Repository<PesertaDidik>,
 	) {}
 
 	// Mata Pelajaran Methods
@@ -196,6 +199,19 @@ export class ElearningService {
 		};
 	}
 
+	// Get all materi for admin (from all gurus)
+	async findAllForAdmin() {
+		const materi = await this.materiRepository.find({
+			relations: ["mataPelajaran"],
+			order: { createdAt: "DESC" },
+		});
+
+		return {
+			success: true,
+			data: materi,
+		};
+	}
+
 	async createMateri(data: any) {
 		if (!data.mataPelajaranId || !data.judul) {
 			throw new BadRequestException("mataPelajaranId dan judul harus diisi");
@@ -347,6 +363,187 @@ export class ElearningService {
 			message: "Jawaban berhasil dinilai",
 			data: await this.jawabanEsaiRepository.findOne({
 				where: { id: jawabanId },
+			}),
+		};
+	}
+
+	// ============= Additional Soal Esai Methods =============
+	async getSoalEsaiById(id: number) {
+		const soal = await this.soalEsaiRepository.findOne({
+			where: { id },
+			relations: ["materi"],
+		});
+
+		if (!soal) {
+			throw new NotFoundException("Soal esai tidak ditemukan");
+		}
+
+		return {
+			success: true,
+			data: soal,
+		};
+	}
+
+	async getSoalEsaiByTugas(tugasId: number) {
+		const soal = await this.soalEsaiRepository
+			.createQueryBuilder("soal")
+			.where("soal.tugasId = :tugasId", { tugasId })
+			.orderBy("soal.createdAt", "ASC")
+			.getMany();
+
+		return {
+			success: true,
+			data: soal,
+			total: soal.length,
+		};
+	}
+
+	async deleteSoalEsai(id: number) {
+		const soal = await this.soalEsaiRepository.findOne({ where: { id } });
+
+		if (!soal) {
+			throw new NotFoundException("Soal esai tidak ditemukan");
+		}
+
+		// Delete all jawaban for this soal
+		await this.jawabanEsaiRepository.delete({ soalEsaiId: id });
+
+		// Delete soal
+		await this.soalEsaiRepository.remove(soal);
+
+		return {
+			success: true,
+			message: "Soal esai berhasil dihapus",
+		};
+	}
+
+	async createJawabanEsai(pesertaDidikId: number, data: any) {
+		const jawabanEsai = this.jawabanEsaiRepository.create({
+			pesertaDidikId,
+			soalEsaiId: data.soalEsaiId,
+			jawaban: data.jawaban,
+			sudahDinilai: false,
+		});
+
+		const result = await this.jawabanEsaiRepository.save(jawabanEsai);
+
+		return {
+			success: true,
+			message: "Jawaban berhasil dikirim",
+			data: result,
+		};
+	}
+
+	async getJawabanEsaiBySoal(soalEsaiId: number) {
+		const jawaban = await this.jawabanEsaiRepository.find({
+			where: { soalEsaiId },
+			relations: ["pesertaDidik"],
+			order: { createdAt: "ASC" },
+		});
+
+		return {
+			success: true,
+			data: jawaban,
+			total: jawaban.length,
+		};
+	}
+
+	/**
+	 * Get all jawaban esai submissions for a tugas
+	 * Groups by student and includes all their answers
+	 */
+	async getJawabanEsaiByTugas(tugasId: number) {
+		// Get all soal esai for this tugas
+		const soalList = await this.soalEsaiRepository.find({
+			where: { tugasId },
+		});
+
+		if (soalList.length === 0) {
+			return {
+				success: true,
+				data: [],
+				message: "No questions found for this task",
+			};
+		}
+
+		const soalIds = soalList.map((s) => s.id);
+
+		// Get all jawaban esai for these soal
+		const jawabanList = await this.jawabanEsaiRepository.find({
+			where: { soalEsaiId: In(soalIds) },
+			relations: ["soalEsai"],
+			order: { pesertaDidikId: "ASC", createdAt: "ASC" },
+		});
+
+		// Get unique student IDs
+		const studentIds = [...new Set(jawabanList.map((j) => j.pesertaDidikId))];
+
+		// Get student details
+		const students = await this.pesertaDidikRepository.find({
+			where: { id: In(studentIds) },
+		});
+
+		// Create a map for easy lookup
+		const studentMap = new Map(students.map((s) => [s.id, s]));
+
+		// Group by peserta didik
+		const grouped: any = {};
+		jawabanList.forEach((jawaban) => {
+			const studentId = jawaban.pesertaDidikId;
+			if (!grouped[studentId]) {
+				const student = studentMap.get(studentId);
+				grouped[studentId] = {
+					pesertaDidikId: studentId,
+					namaLengkap: student?.namaLengkap || "Unknown",
+					nisn: student?.nisn || "",
+					soalJawaban: [],
+					totalNilai: 0,
+					sudahDinilaiSemua: true,
+				};
+			}
+			grouped[studentId].soalJawaban.push(jawaban);
+
+			// Check if all are graded
+			if (!jawaban.sudahDinilai) {
+				grouped[studentId].sudahDinilaiSemua = false;
+			}
+
+			// Calculate total value
+			if (jawaban.nilai) {
+				grouped[studentId].totalNilai += jawaban.nilai;
+			}
+		});
+
+		const result = Object.values(grouped);
+
+		return {
+			success: true,
+			data: result,
+			total: result.length,
+		};
+	}
+
+	async nilaiJawabanEsai(
+		id: number,
+		data: { nilai: number; feedback?: string },
+	) {
+		const jawaban = await this.jawabanEsaiRepository.findOne({ where: { id } });
+
+		if (!jawaban) {
+			throw new NotFoundException("Jawaban tidak ditemukan");
+		}
+
+		await this.jawabanEsaiRepository.update(id, {
+			nilai: data.nilai,
+			sudahDinilai: true,
+			catatanGuru: data.feedback || "",
+		});
+
+		return {
+			success: true,
+			message: "Jawaban berhasil dinilai",
+			data: await this.jawabanEsaiRepository.findOne({
+				where: { id },
 			}),
 		};
 	}

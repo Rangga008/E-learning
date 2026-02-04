@@ -25,52 +25,69 @@ export class GuruService {
 	) {}
 
 	async create(createGuruDto: CreateGuruDto) {
-		// Check duplicate NIP
-		const existing = await this.guruRepository.findOne({
-			where: { nip: createGuruDto.nip },
-		});
-
-		if (existing) {
-			throw new BadRequestException("NIP sudah terdaftar");
-		}
-
-		// Generate username and password for auto-created user
-		const username = createGuruDto.nip; // Use NIP as username
-		const password = createGuruDto.nip; // NIP as default password
-		const hashedPassword = await bcrypt.hash(password, 10);
-
-		// Check if user already exists
-		const existingUser = await this.userRepository.findOne({
-			where: { username },
-		});
-
-		let savedUser;
-		if (existingUser) {
-			savedUser = existingUser;
-		} else {
-			// Create user account automatically
-			const user = this.userRepository.create({
-				username,
-				password: hashedPassword,
-				fullName: createGuruDto.namaLengkap,
-				role: UserRole.GURU,
-				isActive: true,
+		try {
+			// Check duplicate NIP
+			const existing = await this.guruRepository.findOne({
+				where: { nip: createGuruDto.nip },
 			});
-			savedUser = await this.userRepository.save(user);
+
+			if (existing) {
+				throw new BadRequestException("NIP sudah terdaftar");
+			}
+
+			// Generate username and password for auto-created user
+			const username = createGuruDto.nip; // Use NIP as username
+			const password = createGuruDto.nip; // NIP as default password
+			const hashedPassword = await bcrypt.hash(password, 10);
+
+			// Check if user already exists
+			const existingUser = await this.userRepository.findOne({
+				where: { username },
+			});
+
+			let savedUser;
+			if (existingUser) {
+				savedUser = existingUser;
+			} else {
+				// Create user account automatically
+				const user = this.userRepository.create({
+					username,
+					password: hashedPassword,
+					fullName: createGuruDto.namaLengkap,
+					role: UserRole.GURU,
+					isActive: true,
+				});
+				savedUser = await this.userRepository.save(user);
+			}
+
+			// Create guru with userId
+			const guru = this.guruRepository.create({
+				...createGuruDto,
+				userId: savedUser.id, // Explicitly set userId after spread
+			});
+
+			const savedGuru = await this.guruRepository.save(guru);
+
+			// Update user with guruId reference
+			savedUser.guruId = savedGuru.id;
+			await this.userRepository.save(savedUser);
+
+			console.log(
+				"✅ Guru created with id:",
+				savedGuru.id,
+				"for user id:",
+				savedUser.id,
+			);
+			return savedGuru;
+		} catch (error) {
+			console.error("❌ Error creating guru:", error.message);
+			throw error;
 		}
-
-		// Create guru with userId
-		const guru = this.guruRepository.create({
-			...createGuruDto,
-			userId: savedUser.id,
-		});
-
-		return await this.guruRepository.save(guru);
 	}
 
 	async findAll(page: number = 1, limit: number = 10) {
 		const [data, total] = await this.guruRepository.findAndCount({
-			relations: ["kelasWaliList", "kelasMapelList"],
+			relations: ["kelasWaliList", "kelasMapelList", "mataPelajaran"],
 			skip: (page - 1) * limit,
 			take: limit,
 			order: { id: "DESC" },
@@ -90,7 +107,7 @@ export class GuruService {
 	async findOne(id: number) {
 		const guru = await this.guruRepository.findOne({
 			where: { id },
-			relations: ["kelasWaliList", "kelasMapelList"],
+			relations: ["kelasWaliList", "kelasMapelList", "mataPelajaran"],
 		});
 
 		if (!guru) {
@@ -98,6 +115,20 @@ export class GuruService {
 		}
 
 		return guru;
+	}
+
+	async getMataPelajaranByUserId(userId: number) {
+		const guru = await this.guruRepository.findOne({
+			where: { userId },
+			relations: ["mataPelajaran"],
+		});
+
+		if (!guru) {
+			throw new NotFoundException("Guru tidak ditemukan");
+		}
+
+		// Return array of mata pelajaran
+		return guru.mataPelajaran ? [guru.mataPelajaran] : [];
 	}
 
 	async findByKelas(kelas: string) {
