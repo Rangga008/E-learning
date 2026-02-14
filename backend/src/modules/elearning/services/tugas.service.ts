@@ -7,6 +7,10 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository, LessThanOrEqual, MoreThanOrEqual } from "typeorm";
 import { Tugas, TugasStatus } from "../entities/tugas.entity";
 import { CreateTugasDto, UpdateTugasDto } from "../dtos/tugas.dto";
+import {
+	PaginationQueryDto,
+	PaginatedResponseDto,
+} from "../dtos/pagination.dto";
 import { Materi } from "../entities/materi.entity";
 import { JawabanTugas } from "../entities/jawaban-tugas.entity";
 import { FileUploadService } from "./file-upload.service";
@@ -77,7 +81,11 @@ export class TugasService {
 		return this.tugasRepository.save(tugas);
 	}
 
-	async findAll(materiId: number, status?: TugasStatus): Promise<Tugas[]> {
+	async findAll(
+		materiId: number,
+		status?: TugasStatus,
+		pagination?: PaginationQueryDto,
+	): Promise<Tugas[] | PaginatedResponseDto<Tugas>> {
 		const query = this.tugasRepository
 			.createQueryBuilder("tugas")
 			.where("tugas.materiId = :materiId", { materiId });
@@ -86,7 +94,22 @@ export class TugasService {
 			query.andWhere("tugas.status = :status", { status });
 		}
 
-		return query.orderBy("tugas.createdAt", "DESC").getMany();
+		query.orderBy("tugas.createdAt", "DESC");
+
+		if (pagination) {
+			const page = Number(pagination.page) || 1;
+			const limit = Number(pagination.limit) || 10;
+			const skip = (page - 1) * limit;
+
+			const [data, total] = await query
+				.skip(skip)
+				.take(limit)
+				.getManyAndCount();
+
+			return new PaginatedResponseDto(data, page, limit, total);
+		}
+
+		return query.getMany();
 	}
 
 	async findById(id: number): Promise<Tugas> {
@@ -102,7 +125,11 @@ export class TugasService {
 		return tugas;
 	}
 
-	async findByGuruId(guruId: number, status?: TugasStatus): Promise<Tugas[]> {
+	async findByGuruId(
+		guruId: number,
+		status?: TugasStatus,
+		pagination?: PaginationQueryDto,
+	): Promise<Tugas[] | PaginatedResponseDto<Tugas>> {
 		const query = this.tugasRepository
 			.createQueryBuilder("tugas")
 			.where("tugas.guruId = :guruId", { guruId })
@@ -113,7 +140,22 @@ export class TugasService {
 			query.andWhere("tugas.status = :status", { status });
 		}
 
-		return query.orderBy("tugas.createdAt", "DESC").getMany();
+		query.orderBy("tugas.createdAt", "DESC");
+
+		if (pagination) {
+			const page = Number(pagination.page) || 1;
+			const limit = Number(pagination.limit) || 10;
+			const skip = (page - 1) * limit;
+
+			const [data, total] = await query
+				.skip(skip)
+				.take(limit)
+				.getManyAndCount();
+
+			return new PaginatedResponseDto(data, page, limit, total);
+		}
+
+		return query.getMany();
 	}
 
 	async update(
@@ -390,7 +432,9 @@ export class TugasService {
 	async updateFile(
 		id: number,
 		guruId: number,
-		file: Express.Multer.File,
+		fileData:
+			| { filePath: string; fileName: string; fileType: string }
+			| Express.Multer.File,
 	): Promise<Tugas> {
 		const tugas = await this.findById(id);
 
@@ -407,18 +451,40 @@ export class TugasService {
 		}
 
 		console.log(`[DEBUG] Proceeding with file update`);
-		tugas.filePath = file.path;
-		tugas.fileName = file.originalname;
-		tugas.fileType = file.mimetype;
+
+		// Handle both File object (legacy) and upload result object (new)
+		if ("filePath" in fileData) {
+			tugas.filePath = fileData.filePath;
+			tugas.fileName = fileData.fileName;
+			tugas.fileType = fileData.fileType;
+		} else {
+			tugas.filePath = fileData.path;
+			tugas.fileName = fileData.originalname;
+			tugas.fileType = fileData.mimetype;
+		}
 
 		return this.tugasRepository.save(tugas);
 	}
 
-	async updateFileAdmin(id: number, file: Express.Multer.File): Promise<Tugas> {
+	async updateFileAdmin(
+		id: number,
+		fileData:
+			| { filePath: string; fileName: string; fileType: string }
+			| Express.Multer.File,
+	): Promise<Tugas> {
 		const tugas = await this.findById(id);
-		tugas.filePath = file.path;
-		tugas.fileName = file.originalname;
-		tugas.fileType = file.mimetype;
+
+		// Handle both File object (legacy) and upload result object (new)
+		if ("filePath" in fileData) {
+			tugas.filePath = fileData.filePath;
+			tugas.fileName = fileData.fileName;
+			tugas.fileType = fileData.fileType;
+		} else {
+			tugas.filePath = fileData.path;
+			tugas.fileName = fileData.originalname;
+			tugas.fileType = fileData.mimetype;
+		}
+
 		return this.tugasRepository.save(tugas);
 	}
 }

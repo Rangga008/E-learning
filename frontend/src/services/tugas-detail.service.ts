@@ -251,18 +251,58 @@ export const deleteSoalEsai = async (soalId: number): Promise<void> => {
 // ============= SUBMISSION FUNCTIONS =============
 
 /**
- * Get all student submissions for a tugas
+ * Get all student submissions for a tugas (both file uploads and essay answers)
  * @param tugasId - Task ID
- * @returns Array of student submissions
+ * @returns Array of student submissions (normalized format)
  */
 export const getStudentSubmissions = async (
 	tugasId: number,
 ): Promise<StudentSubmission[]> => {
 	try {
-		const response = await axiosInstance.get(
-			`/elearning/jawaban-esai/tugas/${tugasId}`,
+		// First, get the tugas details to know its type
+		const tugasResponse = await axiosInstance.get(
+			`/elearning/tugas/${tugasId}`,
 		);
-		const data = response.data.data || response.data;
+		const tugas = tugasResponse.data;
+
+		let submissionsEndpoint: string;
+		if (tugas.tipe === "UPLOAD") {
+			submissionsEndpoint = `/elearning/guru/tugas/${tugasId}/jawaban`;
+		} else {
+			submissionsEndpoint = `/elearning/jawaban-esai/tugas/${tugasId}`;
+		}
+
+		const response = await axiosInstance.get(submissionsEndpoint);
+		let data: any[] = [];
+
+		if (tugas.tipe === "UPLOAD") {
+			// Normalize UPLOAD submissions
+			const uploadSubmissions = Array.isArray(response.data)
+				? response.data
+				: [];
+			const grouped: Record<number, any> = {};
+
+			uploadSubmissions.forEach((jawaban: any) => {
+				const studentId = jawaban.pesertaDidikId;
+				if (!grouped[studentId]) {
+					grouped[studentId] = {
+						pesertaDidikId: studentId,
+						namaLengkap: jawaban.pesertaDidik?.namaLengkap || "Unknown",
+						nisn: jawaban.pesertaDidik?.nisn || "",
+						jawaban: jawaban,
+						sudahDinilaiSemua:
+							jawaban.nilai !== null && jawaban.nilai !== undefined,
+						totalNilai: jawaban.nilai || 0,
+					};
+				}
+			});
+
+			data = Object.values(grouped);
+		} else {
+			// ESAI submissions are already in expected format
+			data = response.data.data || response.data;
+		}
+
 		return Array.isArray(data) ? data : [];
 	} catch (error) {
 		console.error("Error fetching student submissions:", error);

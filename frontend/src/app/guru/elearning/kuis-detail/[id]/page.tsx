@@ -138,7 +138,10 @@ export default function GuruKuisDetailPage() {
 				setStudentSubmissions([]);
 			}
 		} catch (error: any) {
-			showError("Error loading kuis details");
+			// Don't show error toast for auth errors (401/403) - modal will handle it
+			if (error.response?.status !== 401 && error.response?.status !== 403) {
+				showError("Error loading kuis details");
+			}
 			console.error(error);
 		} finally {
 			setLoading(false);
@@ -628,97 +631,102 @@ export default function GuruKuisDetailPage() {
 								)}
 							</div>
 
-							{editingTugas ? (
-								<div className="space-y-4">
-									<div>
-										<label className="block font-semibold text-gray-700 mb-2">
-											Judul Kuis
-										</label>
-										<input
-											type="text"
-											value={tugasEditForm.judulTugas}
-											onChange={(e) =>
-												setTugasEditForm({
-													...tugasEditForm,
-													judulTugas: e.target.value,
-												})
-											}
-											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-										/>
-									</div>
-
-									<div>
-										<label className="block font-semibold text-gray-700 mb-2">
-											Deskripsi
-										</label>
-										<textarea
-											value={tugasEditForm.deskripsi}
-											onChange={(e) =>
-												setTugasEditForm({
-													...tugasEditForm,
-													deskripsi: e.target.value,
-												})
-											}
-											rows={4}
-											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-										/>
-									</div>
-
-									<div>
-										<label className="block font-semibold text-gray-700 mb-2">
-											Deadline (Opsional)
-										</label>
-										<input
-											type="datetime-local"
-											value={tugasEditForm.deadline}
-											onChange={(e) =>
-												setTugasEditForm({
-													...tugasEditForm,
-													deadline: e.target.value,
-												})
-											}
-											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-										/>
-									</div>
-
-									<div className="flex gap-3">
-										<button
-											onClick={handleSaveTugasEdit}
-											disabled={savingTugasEdit}
-											className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-										>
-											{savingTugasEdit ? "Menyimpan..." : "💾 Simpan"}
-										</button>
-										<button
-											onClick={() => setEditingTugas(false)}
-											className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition"
-										>
-											Batal
-										</button>
-									</div>
-								</div>
-							) : (
-								<div className="space-y-2 text-sm">
+							<div className="space-y-2 text-sm">
+								<p>
+									<strong>Status:</strong>{" "}
+									<span className="bg-gray-300 px-2 py-1 rounded">
+										{tugas.status}
+									</span>
+								</p>
+								{tugas.deadline && (
 									<p>
-										<strong>Status:</strong>{" "}
-										<span className="bg-gray-300 px-2 py-1 rounded">
-											{tugas.status}
-										</span>
+										<strong>Deadline:</strong>{" "}
+										{new Date(tugas.deadline).toLocaleDateString("id-ID")}
 									</p>
-									{tugas.deadline && (
-										<p>
-											<strong>Deadline:</strong>{" "}
-											{new Date(tugas.deadline).toLocaleDateString("id-ID")}
-										</p>
-									)}
-								</div>
-							)}
+								)}
+							</div>
 						</div>
 					</div>
 				</div>
 			</div>
 
-			{/* Soal Modal */}
+			{/* Edit Kuis Modal */}
+			{editingTugas && tugas && (
+				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+					<div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-90vh overflow-y-auto">
+						<div className="sticky top-0 bg-white p-6 border-b border-gray-200">
+							<h3 className="text-2xl font-bold">Edit Informasi Kuis</h3>
+						</div>
+						<div className="p-6 space-y-4">
+							<div>
+								<label className="block font-semibold text-gray-700 mb-2">
+									Judul Kuis
+								</label>
+								<input
+									type="text"
+									value={tugasEditForm.judulTugas}
+									onChange={(e) =>
+										setTugasEditForm({
+											...tugasEditForm,
+											judulTugas: e.target.value,
+										})
+									}
+									className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+								/>
+							</div>
+
+							<div>
+								<label className="block font-semibold text-gray-700 mb-2">
+									Deskripsi
+								</label>
+								<textarea
+									value={tugasEditForm.deskripsi}
+									onChange={(e) =>
+										setTugasEditForm({
+											...tugasEditForm,
+											deskripsi: e.target.value,
+										})
+									}
+									rows={4}
+									className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+								/>
+							</div>
+
+							<div>
+								<label className="block font-semibold text-gray-700 mb-2">
+									Deadline (Opsional)
+								</label>
+								<input
+									type="datetime-local"
+									value={tugasEditForm.deadline}
+									onChange={(e) =>
+										setTugasEditForm({
+											...tugasEditForm,
+											deadline: e.target.value,
+										})
+									}
+									className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+								/>
+							</div>
+						</div>
+						<div className="sticky bottom-0 bg-gray-50 px-6 py-4 border-t border-gray-200 flex gap-3 justify-end">
+							<button
+								onClick={() => setEditingTugas(false)}
+								className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition"
+							>
+								Batal
+							</button>
+							<button
+								onClick={handleSaveTugasEdit}
+								disabled={savingTugasEdit}
+								className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+							>
+								{savingTugasEdit ? "Menyimpan..." : "💾 Simpan"}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 			{showSoalModal && (
 				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
 					<div className="bg-white rounded-lg shadow-lg max-w-2xl w-full">

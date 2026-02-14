@@ -4,9 +4,12 @@ import { ConfigModule, ConfigService } from "@nestjs/config";
 import { JwtModule } from "@nestjs/jwt";
 import { PassportModule } from "@nestjs/passport";
 import { APP_GUARD, APP_FILTER } from "@nestjs/core";
+import { ServeStaticModule } from "@nestjs/serve-static";
+import { join } from "path";
 import { JwtAuthGuard } from "./common/guards/jwt-auth.guard";
 import { RolesGuard } from "./common/guards/roles.guard";
 import { HttpExceptionFilter } from "./common/filters/http-exception.filter";
+import { CommonModule } from "./common/common.module";
 
 const configuration = require("./config/configuration").default;
 
@@ -23,6 +26,10 @@ import { SettingsModule } from "./modules/settings/settings.module";
 
 @Module({
 	imports: [
+		ServeStaticModule.forRoot({
+			rootPath: join(process.cwd(), "uploads"),
+			serveRoot: "/api/uploads",
+		}),
 		ConfigModule.forRoot({
 			isGlobal: true,
 			load: [configuration],
@@ -52,6 +59,7 @@ import { SettingsModule } from "./modules/settings/settings.module";
 			}),
 		}),
 		PassportModule,
+		CommonModule,
 		AuthModule,
 		PesertaDidikModule,
 		GuruModule,

@@ -7,8 +7,13 @@ import { InjectRepository } from "@nestjs/typeorm";
 import { Repository } from "typeorm";
 import { Materi, MateriStatus } from "../entities/materi.entity";
 import { CreateMateriDto, UpdateMateriDto } from "../dtos/materi.dto";
+import {
+	PaginationQueryDto,
+	PaginatedResponseDto,
+} from "../dtos/pagination.dto";
 import { KontenMateri } from "../entities/konten.entity";
 import { FileUploadService } from "./file-upload.service";
+import { CacheService, CACHE_KEYS } from "@/common/services/cache.service";
 
 @Injectable()
 export class MateriService {
@@ -18,6 +23,7 @@ export class MateriService {
 		@InjectRepository(KontenMateri)
 		private readonly kontenRepository: Repository<KontenMateri>,
 		private readonly fileUploadService: FileUploadService,
+		private readonly cacheService: CacheService,
 	) {}
 
 	async create(guruId: number | null, dto: CreateMateriDto): Promise<Materi> {
@@ -26,10 +32,20 @@ export class MateriService {
 			guruId: dto.guruId || guruId,
 			status: dto.status || MateriStatus.DRAFT,
 		});
-		return this.materiRepository.save(materi);
+		const result = await this.materiRepository.save(materi);
+
+		// Invalidate related caches
+		this.cacheService.invalidatePattern("materi:");
+		this.cacheService.invalidatePattern(CACHE_KEYS.ALL_MAPEL);
+
+		return result;
 	}
 
-	async findAll(mapelId: number, status?: MateriStatus): Promise<Materi[]> {
+	async findAll(
+		mapelId: number,
+		status?: MateriStatus,
+		pagination?: PaginationQueryDto,
+	): Promise<Materi[] | PaginatedResponseDto<Materi>> {
 		const query = this.materiRepository
 			.createQueryBuilder("materi")
 			.where("materi.mataPelajaranId = :mapelId", { mapelId });
@@ -38,10 +54,24 @@ export class MateriService {
 			query.andWhere("materi.status = :status", { status });
 		}
 
-		return query
+		query
 			.orderBy("materi.urutan", "ASC")
-			.addOrderBy("materi.createdAt", "DESC")
-			.getMany();
+			.addOrderBy("materi.createdAt", "DESC");
+
+		if (pagination) {
+			const page = Number(pagination.page) || 1;
+			const limit = Number(pagination.limit) || 10;
+			const skip = (page - 1) * limit;
+
+			const [data, total] = await query
+				.skip(skip)
+				.take(limit)
+				.getManyAndCount();
+
+			return new PaginatedResponseDto(data, page, limit, total);
+		}
+
+		return query.getMany();
 	}
 
 	async findById(id: number): Promise<Materi> {
@@ -58,15 +88,38 @@ export class MateriService {
 	}
 
 	// Get all materi for admin (without mapelId filter)
-	async findAllForAdmin(): Promise<Materi[]> {
-		return this.materiRepository.find({
-			relations: ["guru", "mataPelajaran", "tugas"],
-			order: { createdAt: "DESC" },
-		});
+	async findAllForAdmin(
+		pagination?: PaginationQueryDto,
+	): Promise<Materi[] | PaginatedResponseDto<Materi>> {
+		const query = this.materiRepository
+			.createQueryBuilder("materi")
+			.leftJoinAndSelect("materi.guru", "guru")
+			.leftJoinAndSelect("materi.mataPelajaran", "mataPelajaran")
+			.leftJoinAndSelect("materi.tugas", "tugas")
+			.orderBy("materi.createdAt", "DESC");
+
+		if (pagination) {
+			const page = Number(pagination.page) || 1;
+			const limit = Number(pagination.limit) || 10;
+			const skip = (page - 1) * limit;
+
+			const [data, total] = await query
+				.skip(skip)
+				.take(limit)
+				.getManyAndCount();
+
+			return new PaginatedResponseDto(data, page, limit, total);
+		}
+
+		return query.getMany();
 	}
 
 	// Get all materi by guru
-	async findByGuruId(guruId: number, status?: MateriStatus): Promise<Materi[]> {
+	async findByGuruId(
+		guruId: number,
+		status?: MateriStatus,
+		pagination?: PaginationQueryDto,
+	): Promise<Materi[] | PaginatedResponseDto<Materi>> {
 		const query = this.materiRepository
 			.createQueryBuilder("materi")
 			.where("materi.guruId = :guruId", { guruId })
@@ -77,10 +130,24 @@ export class MateriService {
 			query.andWhere("materi.status = :status", { status });
 		}
 
-		return query
+		query
 			.orderBy("materi.urutan", "ASC")
-			.addOrderBy("materi.createdAt", "DESC")
-			.getMany();
+			.addOrderBy("materi.createdAt", "DESC");
+
+		if (pagination) {
+			const page = Number(pagination.page) || 1;
+			const limit = Number(pagination.limit) || 10;
+			const skip = (page - 1) * limit;
+
+			const [data, total] = await query
+				.skip(skip)
+				.take(limit)
+				.getManyAndCount();
+
+			return new PaginatedResponseDto(data, page, limit, total);
+		}
+
+		return query.getMany();
 	}
 
 	async update(
@@ -129,7 +196,13 @@ export class MateriService {
 		}
 
 		materi.status = MateriStatus.PUBLISHED;
-		return this.materiRepository.save(materi);
+		const result = await this.materiRepository.save(materi);
+
+		// Invalidate cache when publishing (affects student views)
+		this.cacheService.invalidatePattern("materi:");
+		this.cacheService.invalidatePattern(CACHE_KEYS.ALL_MAPEL);
+
+		return result;
 	}
 
 	async closeMateri(id: number, guruId: number): Promise<Materi> {
@@ -213,17 +286,36 @@ export class MateriService {
 	}
 
 	async getMateriForSiswa(mapelId: number): Promise<Materi[]> {
-		return this.materiRepository
+		// Check cache first
+		const cacheKey = `${CACHE_KEYS.ALL_MAPEL}:siswa:${mapelId}`;
+		const cached = this.cacheService.get(cacheKey);
+		if (cached) {
+			return cached;
+		}
+
+		const result = await this.materiRepository
 			.createQueryBuilder("materi")
 			.where("materi.mataPelajaranId = :mapelId", { mapelId })
 			.andWhere("materi.status = :status", { status: MateriStatus.PUBLISHED })
 			.orderBy("materi.urutan", "ASC")
 			.getMany();
+
+		// Cache for 30 minutes (1800 seconds)
+		this.cacheService.set(cacheKey, result, 1800);
+
+		return result;
 	}
 
 	async getMapelForSiswa(kelasId: number) {
+		// Check cache first
+		const cacheKey = `${CACHE_KEYS.ALL_MAPEL}:kelas:${kelasId}`;
+		const cached = this.cacheService.get(cacheKey);
+		if (cached) {
+			return cached;
+		}
+
 		// Get all mapel for this kelas and count materi & tugas
-		return this.materiRepository.query(
+		const result = await this.materiRepository.query(
 			`
 				SELECT DISTINCT
 					mp.id,
@@ -249,6 +341,11 @@ export class MateriService {
 			`,
 			[0],
 		); // Note: kelasId parameter would be needed for full implementation
+
+		// Cache for 1 hour (3600 seconds)
+		this.cacheService.set(cacheKey, result, 3600);
+
+		return result;
 	}
 
 	async getPublishedMateriForSiswa(pesertaDidikId: number): Promise<Materi[]> {

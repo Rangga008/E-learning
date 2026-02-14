@@ -36,6 +36,12 @@ export class JawabanTugas {
 	@Column({ nullable: true })
 	filePath: string;
 
+	@Column({ nullable: true })
+	tipeFile: string;
+
+	@Column({ nullable: true })
+	fileName: string;
+
 	@Column({
 		type: "enum",
 		enum: StatusSubmisi,

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
@@ -9,6 +9,7 @@ import {
 	ErrorToast,
 	ConfirmModal,
 } from "@/components/CommonModals";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import { useNotification } from "@/hooks/useNotification";
 
 interface MateriDetail {
@@ -41,6 +42,9 @@ interface KontenMateri {
 	judul: string;
 	kontenTeks?: string;
 	filePath?: string;
+	fileName?: string;
+	fileType?: string;
+	convertedPdfPath?: string;
 	linkVideo?: string;
 	createdAt?: string;
 }
@@ -52,6 +56,8 @@ interface Tugas {
 	deskripsi: string;
 	tipe: "TUGAS" | "KUIS";
 	status: "DRAFT" | "PUBLISHED" | "CLOSED";
+	tanggalBuka?: string;
+	tanggalDeadline?: string;
 	createdAt?: string;
 	updatedAt?: string;
 }
@@ -115,6 +121,8 @@ export default function MateriDetailPage() {
 		deskripsi: "",
 		tipe: "TUGAS",
 		status: "DRAFT",
+		tanggalBuka: new Date().toISOString().split("T")[0],
+		tanggalDeadline: "",
 	});
 	const [kuisForm, setKuisForm] = useState<Tugas>({
 		materiId: parseInt(materiId),
@@ -122,6 +130,8 @@ export default function MateriDetailPage() {
 		deskripsi: "",
 		tipe: "KUIS",
 		status: "DRAFT",
+		tanggalBuka: new Date().toISOString().split("T")[0],
+		tanggalDeadline: "",
 	});
 	const [savingTugas, setSavingTugas] = useState(false);
 	const [savingKuis, setSavingKuis] = useState(false);
@@ -292,6 +302,46 @@ export default function MateriDetailPage() {
 		}
 	};
 
+	// ============= IMAGE UPLOAD HANDLER =============
+	const handleImageUploadForEditor = async (file: File): Promise<string> => {
+		// Validate file type
+		const allowedTypes = [
+			"image/jpeg",
+			"image/png",
+			"image/jpg",
+			"image/gif",
+			"image/webp",
+		];
+		if (!allowedTypes.includes(file.type)) {
+			throw new Error("Hanya file gambar (JPG, PNG, GIF, WebP) yang diizinkan");
+		}
+
+		// Validate file size (max 5MB)
+		if (file.size > 5 * 1024 * 1024) {
+			throw new Error("Ukuran gambar tidak boleh lebih dari 5 MB");
+		}
+
+		const formData = new FormData();
+		formData.append("file", file);
+
+		const baseUrl =
+			process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") ||
+			"http://localhost:3001";
+		const response = await fetch(`${baseUrl}/elearning/upload/image`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${token}` },
+			body: formData,
+		});
+
+		if (!response.ok) {
+			const errorData = await response.json();
+			throw new Error(errorData.message || "Gagal upload gambar");
+		}
+
+		const uploadedImage = await response.json();
+		return uploadedImage.data.imageUrl;
+	};
+
 	// ============= KONTEN FUNCTIONS =============
 	const handleSaveKonten = async () => {
 		if (!kontenForm.judul.trim()) {
@@ -319,6 +369,9 @@ export default function MateriDetailPage() {
 		try {
 			// Step 1: Upload file jika ada
 			let filePath = null;
+			let fileName = null;
+			let fileType = null;
+			let convertedPdfPath = null;
 			if (kontenFile) {
 				const fileFormData = new FormData();
 				fileFormData.append("file", kontenFile);
@@ -343,6 +396,9 @@ export default function MateriDetailPage() {
 
 				const uploadedFile = await uploadResponse.json();
 				filePath = uploadedFile.data.filePath;
+				fileName = uploadedFile.data.fileName;
+				fileType = uploadedFile.data.fileType;
+				convertedPdfPath = uploadedFile.data.convertedPdfPath || null;
 				setUploadProgress(75);
 			}
 
@@ -354,6 +410,9 @@ export default function MateriDetailPage() {
 				kontenTeks: kontenForm.kontenTeks || "",
 				linkVideo: kontenForm.linkVideo || "",
 				filePath: filePath,
+				fileName: fileName,
+				fileType: fileType,
+				convertedPdfPath: convertedPdfPath,
 			};
 
 			const response = await fetch(
@@ -422,7 +481,12 @@ export default function MateriDetailPage() {
 				deskripsi: tugasForm.deskripsi,
 				tipe: "TUGAS",
 				tipeSubmisi: ["TEXT"],
-				tanggalBuka: new Date().toISOString(),
+				tanggalBuka: tugasForm.tanggalBuka
+					? new Date(tugasForm.tanggalBuka).toISOString()
+					: new Date().toISOString(),
+				tanggalDeadline: tugasForm.tanggalDeadline
+					? new Date(tugasForm.tanggalDeadline).toISOString()
+					: null,
 			};
 
 			const response = await fetch(
@@ -456,25 +520,30 @@ export default function MateriDetailPage() {
 	};
 
 	const handleSaveKuis = async () => {
-		if (!tugasForm.judulTugas.trim()) {
+		if (!kuisForm.judulTugas.trim()) {
 			showError("Judul kuis harus diisi");
 			return;
 		}
 
-		if (!tugasForm.deskripsi.trim()) {
+		if (!kuisForm.deskripsi.trim()) {
 			showError("Deskripsi kuis harus diisi");
 			return;
 		}
 
-		setSavingTugas(true);
+		setSavingKuis(true);
 		try {
 			const payload = {
 				materiId: parseInt(materiId),
-				judulTugas: tugasForm.judulTugas,
-				deskripsi: tugasForm.deskripsi,
+				judulTugas: kuisForm.judulTugas,
+				deskripsi: kuisForm.deskripsi,
 				tipe: "KUIS",
 				tipeSubmisi: ["MULTIPLE_CHOICE"],
-				tanggalBuka: new Date().toISOString(),
+				tanggalBuka: kuisForm.tanggalBuka
+					? new Date(kuisForm.tanggalBuka).toISOString()
+					: new Date().toISOString(),
+				tanggalDeadline: kuisForm.tanggalDeadline
+					? new Date(kuisForm.tanggalDeadline).toISOString()
+					: null,
 			};
 
 			const response = await fetch(
@@ -497,13 +566,13 @@ export default function MateriDetailPage() {
 
 			showSuccess("Kuis berhasil ditambahkan");
 			resetTugasForm();
-			setShowTugasModal(false);
+			setShowKuisModal(false);
 			fetchTugas();
 		} catch (error) {
 			console.error("Error saving kuis:", error);
 			showError("Terjadi kesalahan saat menambah kuis");
 		} finally {
-			setSavingTugas(false);
+			setSavingKuis(false);
 		}
 	};
 
@@ -514,6 +583,17 @@ export default function MateriDetailPage() {
 			deskripsi: "",
 			tipe: "TUGAS",
 			status: "DRAFT",
+			tanggalBuka: new Date().toISOString().split("T")[0],
+			tanggalDeadline: "",
+		});
+		setKuisForm({
+			materiId: parseInt(materiId),
+			judulTugas: "",
+			deskripsi: "",
+			tipe: "KUIS",
+			status: "DRAFT",
+			tanggalBuka: new Date().toISOString().split("T")[0],
+			tanggalDeadline: "",
 		});
 	};
 
@@ -683,6 +763,9 @@ export default function MateriDetailPage() {
 		try {
 			// Step 1: Upload file jika ada file baru
 			let filePath = editingKonten?.filePath || null;
+			let fileName = editingKonten?.fileName || null;
+			let fileType = editingKonten?.fileType || null;
+			let convertedPdfPath = editingKonten?.convertedPdfPath || null;
 			if (kontenFile) {
 				const fileFormData = new FormData();
 				fileFormData.append("file", kontenFile);
@@ -707,6 +790,9 @@ export default function MateriDetailPage() {
 
 				const uploadedFile = await uploadResponse.json();
 				filePath = uploadedFile.data.filePath;
+				fileName = uploadedFile.data.fileName;
+				fileType = uploadedFile.data.fileType;
+				convertedPdfPath = uploadedFile.data.convertedPdfPath || null;
 				setUploadProgress(75);
 			}
 
@@ -717,6 +803,9 @@ export default function MateriDetailPage() {
 				kontenTeks: editKontenForm.kontenTeks || "",
 				linkVideo: editKontenForm.linkVideo || "",
 				filePath: filePath,
+				fileName: fileName,
+				fileType: fileType,
+				convertedPdfPath: convertedPdfPath,
 			};
 
 			const response = await fetch(
@@ -1025,9 +1114,30 @@ export default function MateriDetailPage() {
 										)}
 
 										{konten.tipeKonten === "FILE" && (
-											<p className="text-sm text-gray-600 mb-3">
-												File: {konten.filePath}
-											</p>
+											<div className="space-y-2">
+												<p className="text-sm text-gray-600 mb-2">
+													📎 File:{" "}
+													<span className="font-mono text-xs bg-gray-100 px-2 py-1 rounded">
+														{konten.fileName ||
+															konten.filePath?.split("/").pop()}
+													</span>
+												</p>
+												{konten.filePath && (
+													<a
+														href={`${process.env.NEXT_PUBLIC_API_URL}${konten.filePath}`}
+														target="_blank"
+														rel="noopener noreferrer"
+														className="text-sm text-blue-600 hover:underline inline-block"
+													>
+														📥 Download File
+													</a>
+												)}
+												{konten.convertedPdfPath && (
+													<div className="text-xs text-green-600">
+														✓ Word converted to PDF available
+													</div>
+												)}
+											</div>
 										)}
 
 										<p className="text-xs text-gray-400">
@@ -1102,105 +1212,18 @@ export default function MateriDetailPage() {
 												<label className="block text-sm font-medium text-gray-700 mb-1">
 													Isi Teks
 												</label>
-												<div className="mb-2 flex gap-2 p-2 bg-gray-100 rounded border border-gray-300">
-													<button
-														type="button"
-														onClick={() => {
-															const textarea = document.getElementById(
-																"konten-textarea",
-															) as HTMLTextAreaElement;
-															if (textarea) {
-																const start = textarea.selectionStart;
-																const end = textarea.selectionEnd;
-																const text = kontenForm.kontenTeks || "";
-																const selected = text.substring(start, end);
-																const before = text.substring(0, start);
-																const after = text.substring(end);
-																setKontenForm({
-																	...kontenForm,
-																	kontenTeks:
-																		before + "**" + selected + "**" + after,
-																});
-															}
-														}}
-														title="Bold"
-														className="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 font-bold text-sm"
-													>
-														B
-													</button>
-													<button
-														type="button"
-														onClick={() => {
-															const textarea = document.getElementById(
-																"konten-textarea",
-															) as HTMLTextAreaElement;
-															if (textarea) {
-																const start = textarea.selectionStart;
-																const end = textarea.selectionEnd;
-																const text = kontenForm.kontenTeks || "";
-																const selected = text.substring(start, end);
-																const before = text.substring(0, start);
-																const after = text.substring(end);
-																setKontenForm({
-																	...kontenForm,
-																	kontenTeks:
-																		before + "*" + selected + "*" + after,
-																});
-															}
-														}}
-														title="Italic"
-														className="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 italic text-sm"
-													>
-														I
-													</button>
-													<input
-														type="color"
-														onChange={(e) => {
-															const textarea = document.getElementById(
-																"konten-textarea",
-															) as HTMLTextAreaElement;
-															if (textarea) {
-																const start = textarea.selectionStart;
-																const end = textarea.selectionEnd;
-																const text = kontenForm.kontenTeks || "";
-																const selected = text.substring(start, end);
-																const before = text.substring(0, start);
-																const after = text.substring(end);
-																setKontenForm({
-																	...kontenForm,
-																	kontenTeks:
-																		before +
-																		`[color=${e.target.value}]` +
-																		selected +
-																		"[/color]" +
-																		after,
-																});
-															}
-														}}
-														title="Text Color"
-														className="w-12 h-8 border border-gray-300 rounded cursor-pointer"
-													/>
-													<span className="ml-auto text-xs text-gray-600 self-center">
-														Klik area teks untuk resize
-													</span>
-												</div>
-												<textarea
-													id="konten-textarea"
+												<RichTextEditor
 													value={kontenForm.kontenTeks || ""}
-													onChange={(e) =>
+													onChange={(content: string) =>
 														setKontenForm({
 															...kontenForm,
-															kontenTeks: e.target.value,
+															kontenTeks: content,
 														})
 													}
-													placeholder="Masukkan konten teks... (Gunakan toolbar untuk format)"
-													rows={8}
-													className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize"
+													onImageUpload={handleImageUploadForEditor}
+													placeholder="Masukkan konten teks (drag & drop gambar atau gunakan tombol insert image)..."
+													isUploading={false}
 												/>
-												<p className="text-xs text-gray-500 mt-1">
-													💡 Hint: Anda bisa resize textarea dengan menarik
-													sudut kanan bawah
-												</p>
 											</div>
 										)}
 
@@ -1471,6 +1494,42 @@ export default function MateriDetailPage() {
 												className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
 											/>
 										</div>
+
+										{/* TANGGAL BUKA */}
+										<div>
+											<label className="block text-sm font-medium text-gray-700 mb-1">
+												Tanggal Buka
+											</label>
+											<input
+												type="date"
+												value={tugasForm.tanggalBuka || ""}
+												onChange={(e) =>
+													setTugasForm({
+														...tugasForm,
+														tanggalBuka: e.target.value,
+													})
+												}
+												className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+											/>
+										</div>
+
+										{/* TANGGAL DEADLINE */}
+										<div>
+											<label className="block text-sm font-medium text-gray-700 mb-1">
+												Deadline (Opsional)
+											</label>
+											<input
+												type="datetime-local"
+												value={tugasForm.tanggalDeadline || ""}
+												onChange={(e) =>
+													setTugasForm({
+														...tugasForm,
+														tanggalDeadline: e.target.value,
+													})
+												}
+												className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+											/>
+										</div>
 									</div>
 
 									{/* BUTTONS */}
@@ -1540,6 +1599,42 @@ export default function MateriDetailPage() {
 												className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
 											/>
 										</div>
+
+										{/* TANGGAL BUKA */}
+										<div>
+											<label className="block text-sm font-medium text-gray-700 mb-1">
+												Tanggal Buka
+											</label>
+											<input
+												type="date"
+												value={kuisForm.tanggalBuka || ""}
+												onChange={(e) =>
+													setKuisForm({
+														...kuisForm,
+														tanggalBuka: e.target.value,
+													})
+												}
+												className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+											/>
+										</div>
+
+										{/* TANGGAL DEADLINE */}
+										<div>
+											<label className="block text-sm font-medium text-gray-700 mb-1">
+												Deadline (Opsional)
+											</label>
+											<input
+												type="datetime-local"
+												value={kuisForm.tanggalDeadline || ""}
+												onChange={(e) =>
+													setKuisForm({
+														...kuisForm,
+														tanggalDeadline: e.target.value,
+													})
+												}
+												className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-indigo-500 focus:border-transparent"
+											/>
+										</div>
 									</div>
 
 									{/* BUTTONS */}
@@ -1547,13 +1642,7 @@ export default function MateriDetailPage() {
 										<button
 											onClick={() => {
 												setShowKuisModal(false);
-												setKuisForm({
-													materiId: parseInt(materiId),
-													judulTugas: "",
-													deskripsi: "",
-													tipe: "KUIS",
-													status: "DRAFT",
-												});
+												resetTugasForm();
 											}}
 											className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
 										>
@@ -1755,17 +1844,17 @@ export default function MateriDetailPage() {
 									<label className="block text-sm font-medium text-gray-700 mb-1">
 										Konten Teks
 									</label>
-									<textarea
-										value={editKontenForm.kontenTeks}
-										onChange={(e) =>
+									<RichTextEditor
+										value={editKontenForm.kontenTeks || ""}
+										onChange={(content: string) =>
 											setEditKontenForm({
 												...editKontenForm,
-												kontenTeks: e.target.value,
+												kontenTeks: content,
 											})
 										}
-										placeholder="Masukkan konten teks"
-										rows={4}
-										className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+										onImageUpload={handleImageUploadForEditor}
+										placeholder="Masukkan konten teks (drag & drop gambar atau gunakan tombol insert image)..."
+										isUploading={false}
 									/>
 								</div>
 							)}
@@ -1790,6 +1879,59 @@ export default function MateriDetailPage() {
 									/>
 								</div>
 							)}
+
+							{/* FILE UPLOAD */}
+							{editKontenForm.tipeKonten === "FILE" && (
+								<div>
+									<label className="block text-sm font-medium text-gray-700 mb-1">
+										📎 Upload File (PDF atau Word)
+									</label>
+									<div className="border-2 border-dashed border-blue-300 rounded-lg p-4 hover:border-blue-500 transition-colors cursor-pointer">
+										<input
+											type="file"
+											accept=".pdf,.doc,.docx"
+											onChange={(e) => {
+												const file = e.target.files?.[0];
+												if (file) {
+													const allowedTypes = [
+														"application/pdf",
+														"application/msword",
+														"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+													];
+
+													if (!allowedTypes.includes(file.type)) {
+														showError(
+															"Format file tidak didukung. Hanya PDF, DOC, atau DOCX.",
+														);
+														return;
+													}
+
+													if (file.size > 50 * 1024 * 1024) {
+														showError(
+															"Ukuran file terlalu besar. Maksimal 50MB.",
+														);
+														return;
+													}
+
+													setKontenFile(file);
+												}
+											}}
+											className="w-full text-sm text-gray-600 file:mr-3 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-600 hover:file:bg-blue-100 cursor-pointer"
+										/>
+										{kontenFile && (
+											<p className="text-sm text-green-600 mt-2">
+												✓ {kontenFile.name}
+											</p>
+										)}
+										{!kontenFile && editingKonten?.filePath && (
+											<p className="text-sm text-gray-600 mt-2">
+												📄 File saat ini:{" "}
+												{editingKonten.filePath.split("/").pop()}
+											</p>
+										)}
+									</div>
+								</div>
+							)}
 						</div>
 
 						<div className="flex gap-3 mt-6">
@@ -1797,6 +1939,7 @@ export default function MateriDetailPage() {
 								onClick={() => {
 									setShowEditKontenModal(false);
 									setEditingKonten(null);
+									resetKontenForm();
 								}}
 								className="flex-1 border border-gray-300 text-gray-700 px-4 py-2 rounded-lg hover:bg-gray-50 transition-colors"
 							>

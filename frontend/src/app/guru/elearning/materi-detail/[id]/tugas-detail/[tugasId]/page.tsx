@@ -129,53 +129,121 @@ export default function GuruTugasDetailPage() {
 
 			const tugasData = await tugasResponse.json();
 			setTugas(tugasData);
+			console.log("📋 Tugas loaded:", {
+				id: tugasData.id,
+				tipe: tugasData.tipe,
+				judulTugas: tugasData.judulTugas,
+			});
 			setTugasEditForm({
 				judulTugas: tugasData.judulTugas,
 				deskripsi: tugasData.deskripsi,
 				deadline: tugasData.deadline || "",
 			});
 
-			// Load soal esai
-			try {
-				const soalResponse = await fetch(
-					`${process.env.NEXT_PUBLIC_API_URL}/elearning/soal-esai/tugas/${tugasId}`,
-					{
-						headers: {
-							Authorization: `Bearer ${localStorage.getItem("token")}`,
+			// Load soal esai only if task type is ESAI
+			if (tugasData.tipe === "ESAI") {
+				try {
+					const soalResponse = await fetch(
+						`${process.env.NEXT_PUBLIC_API_URL}/elearning/soal-esai/tugas/${tugasId}`,
+						{
+							headers: {
+								Authorization: `Bearer ${localStorage.getItem("token")}`,
+							},
 						},
-					},
-				);
+					);
 
-				if (soalResponse.ok) {
-					const soalData = await soalResponse.json();
-					// Handle both formats: {data: [...]} and [...]
-					const soalList = soalData.data || soalData;
-					setSoalList(Array.isArray(soalList) ? soalList : []);
+					if (soalResponse.ok) {
+						const soalData = await soalResponse.json();
+						// Handle both formats: {data: [...]} and [...]
+						const soalList = soalData.data || soalData;
+						setSoalList(Array.isArray(soalList) ? soalList : []);
+					}
+				} catch (error) {
+					console.log("Error loading soal");
 				}
-			} catch (error) {
-				console.log("Error loading soal");
 			}
 
-			// Load submissions (endpoint may not exist yet on backend)
+			// Load submissions based on task type
 			try {
-				const submissionsResponse = await fetch(
-					`${process.env.NEXT_PUBLIC_API_URL}/elearning/jawaban-esai/tugas/${tugasId}`,
-					{
-						headers: {
-							Authorization: `Bearer ${localStorage.getItem("token")}`,
-						},
-					},
+				let submissionsEndpoint: string;
+
+				if (tugasData.tipe === "UPLOAD") {
+					// File submission type - call jawaban-tugas endpoint
+					submissionsEndpoint = `${process.env.NEXT_PUBLIC_API_URL}/elearning/guru/tugas/${tugasId}/jawaban`;
+				} else {
+					// Quiz type - call jawaban-esai endpoint
+					submissionsEndpoint = `${process.env.NEXT_PUBLIC_API_URL}/elearning/jawaban-esai/tugas/${tugasId}`;
+				}
+
+				console.log(
+					`🔍 Task type: "${tugasData.tipe}" -> Calling endpoint:`,
+					submissionsEndpoint,
 				);
+				const submissionsResponse = await fetch(submissionsEndpoint, {
+					headers: {
+						Authorization: `Bearer ${localStorage.getItem("token")}`,
+					},
+				});
 
 				if (submissionsResponse.ok) {
-					const data = await submissionsResponse.json();
-					setStudentSubmissions(Array.isArray(data) ? data : []);
-				} else if (submissionsResponse.status === 404) {
-					// Endpoint not yet implemented - set empty submissions
+					const rawData = await submissionsResponse.json();
+					console.log("✅ Raw response from endpoint:", rawData);
+
+					// Extract data from wrapped response
+					let data = rawData.data !== undefined ? rawData.data : rawData;
+					console.log(
+						"✅ Extracted data:",
+						data,
+						`(type: ${typeof data}, isArray: ${Array.isArray(data)})`,
+					);
+
+					// Normalize response format
+					let normalizedSubmissions: any[] = [];
+
+					if (tugasData.tipe === "UPLOAD") {
+						// Transform UPLOAD submissions to match expected format
+						const uploadSubmissions = Array.isArray(data) ? data : [];
+						console.log(
+							`📊 Processing ${uploadSubmissions.length} upload submissions`,
+						);
+
+						const grouped: Record<number, any> = {};
+
+						uploadSubmissions.forEach((jawaban: any) => {
+							const studentId = jawaban.pesertaDidikId;
+							if (!grouped[studentId]) {
+								grouped[studentId] = {
+									pesertaDidikId: studentId,
+									namaLengkap: jawaban.pesertaDidik?.namaLengkap || "Unknown",
+									nisn: jawaban.pesertaDidik?.nisn || "",
+									jawaban: jawaban, // Store the full jawaban object
+									sudahDinilaiSemua:
+										jawaban.nilai !== null && jawaban.nilai !== undefined,
+									totalNilai: jawaban.nilai || 0,
+								};
+							}
+						});
+
+						normalizedSubmissions = Object.values(grouped);
+					} else {
+						// ESAI submissions are already in the expected format
+						normalizedSubmissions = Array.isArray(data) ? data : [];
+					}
+
+					console.log(
+						`✅ Final submissions count: ${normalizedSubmissions.length}`,
+					);
+					setStudentSubmissions(normalizedSubmissions);
+				} else {
+					console.error(
+						`❌ Failed to fetch submissions. Status: ${submissionsResponse.status}`,
+					);
+					const errorData = await submissionsResponse.json();
+					console.error("Error response:", errorData);
 					setStudentSubmissions([]);
 				}
 			} catch (error) {
-				// Silently fail - endpoint may not exist yet
+				console.log("❌ Error loading submissions:", error);
 				setStudentSubmissions([]);
 			}
 		} catch (error: any) {
@@ -184,7 +252,7 @@ export default function GuruTugasDetailPage() {
 		} finally {
 			setLoading(false);
 		}
-	}, [tugasId, showError]);
+	}, [tugasId, showError, setSoalList, setStudentSubmissions]);
 
 	useEffect(() => {
 		if (tugasId && user) {
@@ -963,109 +1031,119 @@ export default function GuruTugasDetailPage() {
 							</div>
 						</div>
 
-						{/* Edit Tugas */}
+						{/* Edit Button */}
 						<div className="bg-blue-50 border border-blue-300 rounded-lg p-4">
-							<div className="flex items-center justify-between mb-4">
-								<h3 className="font-bold text-lg">Edit Informasi Tugas</h3>
-								{!editingTugas && (
-									<button
-										onClick={() => setEditingTugas(true)}
-										className="text-blue-600 hover:text-blue-800 font-semibold"
-									>
-										✏️ Edit
-									</button>
-								)}
-							</div>
+							<button
+								onClick={() => setEditingTugas(true)}
+								className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-semibold transition flex items-center gap-2"
+							>
+								✏️ Edit Informasi Tugas
+							</button>
+						</div>
 
-							{editingTugas ? (
-								<div className="space-y-4">
-									<div>
-										<label className="block font-semibold text-gray-700 mb-2">
-											Judul Tugas
-										</label>
-										<input
-											type="text"
-											value={tugasEditForm.judulTugas}
-											onChange={(e) =>
-												setTugasEditForm({
-													...tugasEditForm,
-													judulTugas: e.target.value,
-												})
-											}
-											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-										/>
-									</div>
-
-									<div>
-										<label className="block font-semibold text-gray-700 mb-2">
-											Deskripsi
-										</label>
-										<textarea
-											value={tugasEditForm.deskripsi}
-											onChange={(e) =>
-												setTugasEditForm({
-													...tugasEditForm,
-													deskripsi: e.target.value,
-												})
-											}
-											rows={4}
-											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-										/>
-									</div>
-
-									<div>
-										<label className="block font-semibold text-gray-700 mb-2">
-											Deadline (Opsional)
-										</label>
-										<input
-											type="datetime-local"
-											value={tugasEditForm.deadline}
-											onChange={(e) =>
-												setTugasEditForm({
-													...tugasEditForm,
-													deadline: e.target.value,
-												})
-											}
-											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
-										/>
-									</div>
-
-									<div className="flex gap-3">
-										<button
-											onClick={handleSaveTugasEdit}
-											disabled={savingTugasEdit}
-											className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
-										>
-											{savingTugasEdit ? "Menyimpan..." : "💾 Simpan"}
-										</button>
-										<button
-											onClick={() => setEditingTugas(false)}
-											className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition"
-										>
-											Batal
-										</button>
-									</div>
-								</div>
-							) : (
-								<div className="space-y-2 text-sm">
-									<p>
-										<strong>Status:</strong>{" "}
-										<span className="bg-gray-300 px-2 py-1 rounded">
-											{tugas.status}
-										</span>
-									</p>
-									{tugas.deadline && (
-										<p>
-											<strong>Deadline:</strong>{" "}
-											{new Date(tugas.deadline).toLocaleDateString("id-ID")}
-										</p>
-									)}
-								</div>
+						{/* Informasi Tugas */}
+						<div className="bg-gray-50 border border-gray-300 rounded-lg p-4 space-y-2 text-sm">
+							<p>
+								<strong>Status:</strong>{" "}
+								<span className="bg-gray-300 px-2 py-1 rounded">
+									{tugas.status}
+								</span>
+							</p>
+							{tugas.deadline && (
+								<p>
+									<strong>Deadline:</strong>{" "}
+									{new Date(tugas.deadline).toLocaleDateString("id-ID")}
+								</p>
 							)}
 						</div>
 					</div>
 				</div>
 			</div>
+
+			{/* Edit Tugas Modal */}
+			{editingTugas && tugas && (
+				<div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+					<div className="bg-white rounded-lg shadow-lg max-w-2xl w-full max-h-90vh overflow-y-auto">
+						{/* Modal Header */}
+						<div className="sticky top-0 bg-white p-6 border-b border-gray-200">
+							<h3 className="text-2xl font-bold text-gray-800">
+								Edit Informasi Tugas
+							</h3>
+						</div>
+
+						{/* Modal Body */}
+						<div className="p-6 space-y-4">
+							<div>
+								<label className="block font-semibold text-gray-700 mb-2">
+									Judul Tugas
+								</label>
+								<input
+									type="text"
+									value={tugasEditForm.judulTugas}
+									onChange={(e) =>
+										setTugasEditForm({
+											...tugasEditForm,
+											judulTugas: e.target.value,
+										})
+									}
+									className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+								/>
+							</div>
+
+							<div>
+								<label className="block font-semibold text-gray-700 mb-2">
+									Deskripsi
+								</label>
+								<textarea
+									value={tugasEditForm.deskripsi}
+									onChange={(e) =>
+										setTugasEditForm({
+											...tugasEditForm,
+											deskripsi: e.target.value,
+										})
+									}
+									rows={4}
+									className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+								/>
+							</div>
+
+							<div>
+								<label className="block font-semibold text-gray-700 mb-2">
+									Deadline (Opsional)
+								</label>
+								<input
+									type="datetime-local"
+									value={tugasEditForm.deadline}
+									onChange={(e) =>
+										setTugasEditForm({
+											...tugasEditForm,
+											deadline: e.target.value,
+										})
+									}
+									className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+								/>
+							</div>
+						</div>
+
+						{/* Modal Footer */}
+						<div className="sticky bottom-0 bg-gray-50 px-6 py-4 border-t border-gray-200 flex gap-3 justify-end">
+							<button
+								onClick={() => setEditingTugas(false)}
+								className="bg-gray-400 text-white px-4 py-2 rounded-lg hover:bg-gray-500 transition"
+							>
+								Batal
+							</button>
+							<button
+								onClick={handleSaveTugasEdit}
+								disabled={savingTugasEdit}
+								className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 transition disabled:opacity-50"
+							>
+								{savingTugasEdit ? "Menyimpan..." : "💾 Simpan"}
+							</button>
+						</div>
+					</div>
+				</div>
+			)}
 
 			{/* Soal Modal */}
 			{showSoalModal && (

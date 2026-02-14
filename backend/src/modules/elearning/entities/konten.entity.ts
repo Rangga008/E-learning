@@ -42,6 +42,15 @@ export class KontenMateri {
 	@Column({ nullable: true })
 	filePath: string | null;
 
+	@Column({ nullable: true })
+	fileName: string | null;
+
+	@Column({ nullable: true })
+	fileType: string | null;
+
+	@Column({ nullable: true })
+	convertedPdfPath: string | null;
+
 	@ManyToOne(() => Materi, { onDelete: "CASCADE" })
 	@JoinColumn({ name: "materiId" })
 	materi: Materi;

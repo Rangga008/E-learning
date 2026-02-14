@@ -13,6 +13,9 @@ interface Tugas {
 	tanggalBuka: string;
 	tanggalDeadline: string;
 	nilaiMaksimal: number;
+	filePath?: string;
+	fileName?: string;
+	fileType?: string;
 	materi?: {
 		id: number;
 		judulMateri: string;
@@ -128,9 +131,8 @@ export default function SiswaSubmitTugasPage() {
 			const formData = new FormData();
 			formData.append("file", selectedFile);
 			formData.append("tugasId", String(tugasId));
-			formData.append("tipeFile", selectedFile.type);
 
-			const res = await fetch("/api/elearning/jawaban-tugas/submit", {
+			const res = await fetch("/api/elearning/jawaban/upload", {
 				method: "POST",
 				body: formData,
 			});
@@ -266,6 +268,32 @@ export default function SiswaSubmitTugasPage() {
 						</p>
 					</div>
 
+					{/* File Tugas - Jika ada file yang di-upload guru */}
+					{tugas.filePath && (
+						<div className="mt-6 p-4 bg-amber-50 rounded-lg border border-amber-200">
+							<div className="text-sm font-semibold text-amber-900 mb-3">
+								📎 File Tugas
+							</div>
+							<div className="flex items-center justify-between p-3 bg-white rounded border border-amber-200">
+								<div>
+									<p className="text-sm font-medium text-gray-900">
+										{tugas.fileName || "File Tugas"}
+									</p>
+									<p className="text-xs text-gray-500 mt-1">
+										{tugas.fileType || "File"}
+									</p>
+								</div>
+								<a
+									href={`/api/elearning/jawaban/${tugas.filePath}/download`}
+									download={tugas.fileName}
+									className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 text-sm font-medium"
+								>
+									Download
+								</a>
+							</div>
+						</div>
+					)}
+
 					<div className="mt-6 grid grid-cols-2 gap-4">
 						<div>
 							<div className="text-sm font-semibold text-gray-700 mb-1">
@@ -396,22 +424,23 @@ export default function SiswaSubmitTugasPage() {
 								<div className="text-sm font-semibold text-gray-700 mb-1">
 									File
 								</div>
-								<a
-									href={jawaban.filePath}
-									target="_blank"
-									rel="noopener noreferrer"
-									className="text-blue-600 hover:text-blue-700 underline"
-								>
-									Download File
-								</a>
-							</div>
-
-							<div>
-								<div className="text-sm font-semibold text-gray-700 mb-1">
-									Waktu Submisi
-								</div>
-								<div className="text-gray-600">
-									{formatDate(jawaban.createdAt)}
+								<div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200">
+									<div>
+										<p className="text-sm font-medium text-gray-900">
+											{jawaban.fileName || "File Jawaban"}
+										</p>
+										<p className="text-xs text-gray-500 mt-1">
+											Upload: {formatDate(jawaban.createdAt)}
+										</p>
+									</div>
+									<a
+										href={`/api/elearning/jawaban/${jawaban.id}/download`}
+										target="_blank"
+										rel="noopener noreferrer"
+										className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 text-sm font-semibold"
+									>
+										Download
+									</a>
 								</div>
 							</div>
 
@@ -434,6 +463,39 @@ export default function SiswaSubmitTugasPage() {
 										</>
 									)}
 								</div>
+							)}
+
+							{!jawaban.nilai && (
+								<button
+									onClick={async () => {
+										if (
+											confirm(
+												"Apakah Anda yakin ingin menghapus submission ini? Anda akan bisa mengirim ulang.",
+											)
+										) {
+											try {
+												const res = await fetch(
+													`/api/elearning/jawaban/${jawaban.id}`,
+													{
+														method: "DELETE",
+													},
+												);
+												if (res.ok) {
+													showSuccess("Submission berhasil dihapus");
+													await fetchJawaban();
+												} else {
+													showError("Gagal menghapus submission");
+												}
+											} catch (error) {
+												showError("Gagal menghapus submission");
+												console.error(error);
+											}
+										}
+									}}
+									className="w-full py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
+								>
+									Hapus & Kirim Ulang
+								</button>
 							)}
 						</div>
 					</div>

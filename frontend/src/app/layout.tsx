@@ -3,34 +3,21 @@
 import { ReactNode, useEffect } from "react";
 import "./globals.css";
 import { useAuthStore } from "@/store/auth.store";
+import { ReLoginModal } from "@/components/ReLoginModal";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 
 export default function RootLayout({ children }: { children: ReactNode }) {
 	const restoreSession = useAuthStore((state) => state.restoreSession);
-	const clearSession = useAuthStore((state) => state.clearSession);
+	const showReLoginModal = useAuthStore((state) => state.showReLoginModal);
+	const reLoginReason = useAuthStore((state) => state.reLoginReason);
+	const closeReLoginModal = useAuthStore((state) => state.closeReLoginModal);
+
+	// Track session timeout and auto-logout
+	useSessionTimeout();
 
 	useEffect(() => {
 		restoreSession();
-
-		// Listen for token expiry events from apiClient interceptor
-		const handleAuthExpired = () => {
-			console.warn("Token expired, clearing session and redirecting...");
-			clearSession();
-			// Ensure redirect happens
-			if (
-				typeof window !== "undefined" &&
-				!window.location.pathname.startsWith("/auth/login")
-			) {
-				setTimeout(() => {
-					window.location.href = "/auth/login?reason=token_expired";
-				}, 50);
-			}
-		};
-
-		window.addEventListener("auth-expired", handleAuthExpired);
-		return () => {
-			window.removeEventListener("auth-expired", handleAuthExpired);
-		};
-	}, [restoreSession, clearSession]);
+	}, [restoreSession]);
 
 	return (
 		<html lang="id">
@@ -39,7 +26,14 @@ export default function RootLayout({ children }: { children: ReactNode }) {
 				<meta name="viewport" content="width=device-width, initial-scale=1.0" />
 				<title>LMS Sanggar Belajar - Belajar Tanpa Batas</title>
 			</head>
-			<body className="bg-gray-50">{children}</body>
+			<body className="bg-gray-50">
+				{children}
+				<ReLoginModal
+					isOpen={showReLoginModal}
+					reason={reLoginReason}
+					onClose={closeReLoginModal}
+				/>
+			</body>
 		</html>
 	);
 }

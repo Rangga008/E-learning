@@ -256,10 +256,23 @@ export class ElearningService {
 	}
 
 	async createSoalEsai(data: any) {
-		if (!data.materiId || !data.pertanyaan) {
-			throw new BadRequestException("materiId dan pertanyaan harus diisi");
+		// Validate required fields
+		if (!data.pertanyaan) {
+			throw new BadRequestException("Pertanyaan soal harus diisi");
 		}
 
+		// Validate: must have either materiId or tugasId, but not both
+		const hasMaterialId = data.materiId !== null && data.materiId !== undefined;
+		const hasTaskId = data.tugasId !== null && data.tugasId !== undefined;
+
+		if (!hasMaterialId && !hasTaskId) {
+			throw new BadRequestException(
+				"Soal harus terkait dengan materiId (untuk soal materi) ATAU tugasId (untuk soal tugas/kuis)",
+			);
+		}
+
+		// For backward compatibility: if only materiId is provided, allow it
+		// But if both are provided, this will fail at database level with CHECK constraint
 		const soal = this.soalEsaiRepository.create(data);
 		const result = await this.soalEsaiRepository.save(soal);
 
@@ -418,6 +431,33 @@ export class ElearningService {
 	}
 
 	async createJawabanEsai(pesertaDidikId: number, data: any) {
+		console.log(
+			`\n[QUIZ SUBMIT] Student ${pesertaDidikId} submitting answer for soal ${data.soalEsaiId}`,
+		);
+		console.log(`[QUIZ SUBMIT] Answer: ${data.jawaban?.substring(0, 100)}...`);
+
+		// Check if answer already exists
+		const existing = await this.jawabanEsaiRepository.findOne({
+			where: {
+				soalEsaiId: data.soalEsaiId,
+				pesertaDidikId,
+			},
+		});
+
+		if (existing) {
+			console.log(`[QUIZ SUBMIT] Answer already exists - updating`);
+			// Update existing answer
+			existing.jawaban = data.jawaban;
+			existing.updatedAt = new Date();
+			const result = await this.jawabanEsaiRepository.save(existing);
+			return {
+				success: true,
+				message: "Jawaban berhasil diperbarui",
+				data: result,
+			};
+		}
+
+		console.log(`[QUIZ SUBMIT] Creating new answer record`);
 		const jawabanEsai = this.jawabanEsaiRepository.create({
 			pesertaDidikId,
 			soalEsaiId: data.soalEsaiId,
@@ -426,6 +466,7 @@ export class ElearningService {
 		});
 
 		const result = await this.jawabanEsaiRepository.save(jawabanEsai);
+		console.log(`[QUIZ SUBMIT] ✅ Answer saved with ID: ${result.id}`);
 
 		return {
 			success: true,
@@ -448,17 +489,46 @@ export class ElearningService {
 		};
 	}
 
+	async getJawabanEsaiBySoalForSiswa(
+		soalEsaiId: number,
+		pesertaDidikId: number,
+	) {
+		const jawaban = await this.jawabanEsaiRepository.findOne({
+			where: { soalEsaiId, pesertaDidikId },
+			relations: ["pesertaDidik"],
+		});
+
+		return {
+			success: true,
+			data: jawaban || null,
+		};
+	}
+
 	/**
 	 * Get all jawaban esai submissions for a tugas
 	 * Groups by student and includes all their answers
 	 */
 	async getJawabanEsaiByTugas(tugasId: number) {
+		console.log(
+			`\n[JAWABAN-ESAI DEBUG] Getting submissions for tugasId: ${tugasId}`,
+		);
+
 		// Get all soal esai for this tugas
 		const soalList = await this.soalEsaiRepository.find({
 			where: { tugasId },
 		});
 
+		console.log(
+			`[JAWABAN-ESAI DEBUG] Found ${soalList.length} questions (soal_esai)`,
+		);
+		soalList.forEach((s) => {
+			console.log(`  - Soal ID: ${s.id}, Pertanyaan: ${s.pertanyaan}`);
+		});
+
 		if (soalList.length === 0) {
+			console.log(
+				`[JAWABAN-ESAI DEBUG] No questions found - returning empty data`,
+			);
 			return {
 				success: true,
 				data: [],
@@ -471,8 +541,19 @@ export class ElearningService {
 		// Get all jawaban esai for these soal
 		const jawabanList = await this.jawabanEsaiRepository.find({
 			where: { soalEsaiId: In(soalIds) },
-			relations: ["soalEsai"],
+			relations: ["soalEsai", "pesertaDidik"],
 			order: { pesertaDidikId: "ASC", createdAt: "ASC" },
+		});
+
+		console.log(
+			`[JAWABAN-ESAI DEBUG] Found ${jawabanList.length} student answers (jawaban_esai)`,
+		);
+		jawabanList.forEach((j) => {
+			console.log(
+				`  - Student ID: ${j.pesertaDidikId}, Soal ID: ${
+					j.soalEsaiId
+				}, Answer: ${j.jawaban?.substring(0, 50)}...`,
+			);
 		});
 
 		// Get unique student IDs
@@ -482,6 +563,10 @@ export class ElearningService {
 		const students = await this.pesertaDidikRepository.find({
 			where: { id: In(studentIds) },
 		});
+
+		console.log(
+			`[JAWABAN-ESAI DEBUG] Found ${students.length} unique students with answers`,
+		);
 
 		// Create a map for easy lookup
 		const studentMap = new Map(students.map((s) => [s.id, s]));
@@ -516,6 +601,10 @@ export class ElearningService {
 
 		const result = Object.values(grouped);
 
+		console.log(
+			`[JAWABAN-ESAI DEBUG] Final result: ${result.length} grouped submissions`,
+		);
+
 		return {
 			success: true,
 			data: result,
@@ -545,6 +634,31 @@ export class ElearningService {
 			data: await this.jawabanEsaiRepository.findOne({
 				where: { id },
 			}),
+		};
+	}
+
+	async deleteJawabanEsai(id: number, userId: number, userRole: string) {
+		const jawaban = await this.jawabanEsaiRepository.findOne({
+			where: { id },
+			relations: ["pesertaDidik"],
+		});
+
+		if (!jawaban) {
+			throw new NotFoundException("Jawaban tidak ditemukan");
+		}
+
+		// Only allow student to delete their own answer, or teacher/admin to delete any
+		if (userRole === "siswa" && jawaban.pesertaDidikId !== userId) {
+			throw new BadRequestException(
+				"Anda tidak memiliki akses untuk menghapus jawaban ini",
+			);
+		}
+
+		await this.jawabanEsaiRepository.remove(jawaban);
+
+		return {
+			success: true,
+			message: "Jawaban berhasil dihapus",
 		};
 	}
 }

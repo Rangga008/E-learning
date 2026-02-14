@@ -4,6 +4,8 @@ import axios from "axios";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001/api";
 
+// Plain axios instance for login/auth requests without modal interceptor
+// This prevents infinite loops when re-login modal itself tries to login
 export const apiClient = axios.create({
 	baseURL: API_URL,
 	headers: {
@@ -11,7 +13,7 @@ export const apiClient = axios.create({
 	},
 });
 
-// Add token to requests
+// Add token to auth requests
 apiClient.interceptors.request.use((config) => {
 	const token =
 		typeof window !== "undefined" ? localStorage.getItem("token") : null;
@@ -21,36 +23,7 @@ apiClient.interceptors.request.use((config) => {
 	return config;
 });
 
-// Handle 401 errors (token expired or invalid)
-apiClient.interceptors.response.use(
-	(response) => response,
-	(error) => {
-		if (error.response?.status === 401) {
-			// Token invalid or expired
-			if (typeof window !== "undefined") {
-				// Clear auth data from localStorage immediately
-				localStorage.removeItem("token");
-				localStorage.removeItem("user");
-
-				// Dispatch event to trigger auth store update
-				try {
-					const event = new Event("auth-expired");
-					window.dispatchEvent(event);
-				} catch (e) {
-					console.error("Failed to dispatch auth-expired event:", e);
-				}
-
-				// Redirect to login ONLY if not already there
-				// Use setTimeout to allow event to propagate first
-				if (!window.location.pathname.startsWith("/auth/login")) {
-					setTimeout(() => {
-						window.location.href = "/auth/login?reason=token_expired";
-					}, 100);
-				}
-			}
-		}
-		return Promise.reject(error);
-	},
-);
+// No response interceptor here - let the server response pass through
+// The ReLoginModal will handle its own error scenarios
 
 export default apiClient;

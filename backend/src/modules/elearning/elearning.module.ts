@@ -1,5 +1,6 @@
 import { Module } from "@nestjs/common";
 import { TypeOrmModule } from "@nestjs/typeorm";
+import { CommonModule } from "../../common/common.module";
 import { ElearningController } from "./controllers/elearning.controller";
 import { MateriService } from "./services/materi.service";
 import { TugasService } from "./services/tugas.service";
@@ -11,6 +12,7 @@ import { ElearningService } from "./services/elearning.service";
 import { RencanaService } from "./services/rencana.service";
 import { KontenService } from "./services/konten.service";
 import { FileUploadService } from "./services/file-upload.service";
+import { DocumentConverterService } from "../../common/services/document-converter.service";
 import { MataPelajaran } from "./entities/mata-pelajaran.entity";
 import { Materi } from "./entities/materi.entity";
 import { Tugas } from "./entities/tugas.entity";
@@ -28,6 +30,7 @@ import { PesertaDidik } from "../peserta-didik/entities/peserta-didik.entity";
 
 @Module({
 	imports: [
+		CommonModule,
 		TypeOrmModule.forFeature([
 			MataPelajaran,
 			Materi,
@@ -57,6 +60,7 @@ import { PesertaDidik } from "../peserta-didik/entities/peserta-didik.entity";
 		RencanaService,
 		KontenService,
 		FileUploadService,
+		DocumentConverterService,
 	],
 	exports: [
 		MateriService,
@@ -68,6 +72,7 @@ import { PesertaDidik } from "../peserta-didik/entities/peserta-didik.entity";
 		RencanaService,
 		KontenService,
 		FileUploadService,
+		DocumentConverterService,
 	],
 })
 export class ElearningModule {}

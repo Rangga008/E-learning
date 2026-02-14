@@ -12,7 +12,6 @@ interface MapelCard {
 	guru_nama: string;
 	materi_count: number;
 	tugas_count: number;
-	tugas_belum_dikerjakan: number;
 }
 
 interface Materi {
@@ -139,7 +138,7 @@ export default function SiswaElearningPage() {
 			<div className="max-w-7xl mx-auto">
 				{/* Header */}
 				<div className="mb-8">
-					<h1 className="text-3xl font-bold text-gray-900">E-Learning</h1>
+					<h1 className="text-3xl font-bold text-gray-900">📚 E-Learning</h1>
 					<p className="text-gray-600 mt-2">
 						Pilih mata pelajaran untuk melihat materi dan tugas
 					</p>
@@ -204,7 +203,7 @@ export default function SiswaElearningPage() {
 										<div className="text-sm text-gray-600 mb-4">
 											{materiCount[mapel.id] ? (
 												<p className="text-green-600 font-medium">
-													✓ {materiCount[mapel.id]} materi baru tersedia
+													✓ {materiCount[mapel.id]} materi tersedia
 												</p>
 											) : (
 												<p className="text-gray-500">Belum ada materi</p>
@@ -213,7 +212,7 @@ export default function SiswaElearningPage() {
 
 										{/* Button */}
 										<button className="w-full bg-gradient-to-r from-purple-500 to-blue-500 hover:from-purple-600 hover:to-blue-600 text-white font-semibold py-2 px-4 rounded-lg transition-all duration-300 group-hover:shadow-lg">
-											Lihat Materi
+											📖 Lihat Materi
 										</button>
 									</div>
 								</div>

@@ -26,7 +26,10 @@ export const useTugasDetail = (tugasId: number, materiId: number) => {
 				showSuccess("Soal berhasil ditambahkan");
 				return result;
 			} catch (error: any) {
-				showError(error.message || "Gagal menambahkan soal");
+				// Don't show error for auth errors - modal will handle it
+				if (error.response?.status !== 401 && error.response?.status !== 403) {
+					showError(error.message || "Gagal menambahkan soal");
+				}
 				throw error;
 			} finally {
 				setLoading(false);
@@ -267,7 +270,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 				await kuisDetailService.deleteSoalEsai(soalId);
 				showSuccess("Soal berhasil dihapus");
 			} catch (error: any) {
-				showError(error.message || "Gagal menghapus soal");
+				if (error.response?.status !== 401 && error.response?.status !== 403) {
+					showError(error.message || "Gagal menghapus soal");
+				}
 				throw error;
 			} finally {
 				setLoading(false);
@@ -287,7 +292,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 				showSuccess("Soal berhasil diperbarui");
 				return result;
 			} catch (error: any) {
-				showError(error.message || "Gagal memperbarui soal");
+				if (error.response?.status !== 401 && error.response?.status !== 403) {
+					showError(error.message || "Gagal memperbarui soal");
+				}
 				throw error;
 			} finally {
 				setLoading(false);
@@ -311,7 +318,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 				);
 				showSuccess("Nilai berhasil disimpan");
 			} catch (error: any) {
-				showError(error.message || "Gagal menyimpan nilai");
+				if (error.response?.status !== 401 && error.response?.status !== 403) {
+					showError(error.message || "Gagal menyimpan nilai");
+				}
 				throw error;
 			} finally {
 				setLoading(false);
@@ -327,7 +336,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 				await kuisDetailService.reopenJawabanEsai(jawabanId);
 				showSuccess("Jawaban berhasil dibuka kembali");
 			} catch (error: any) {
-				showError(error.message || "Gagal membuka jawaban");
+				if (error.response?.status !== 401 && error.response?.status !== 403) {
+					showError(error.message || "Gagal membuka jawaban");
+				}
 				throw error;
 			} finally {
 				setLoading(false);
@@ -343,7 +354,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 			await kuisDetailService.publishKuis(kuisId);
 			showSuccess("Kuis berhasil dipublikasikan");
 		} catch (error: any) {
-			showError(error.message || "Gagal mempublikasikan kuis");
+			if (error.response?.status !== 401 && error.response?.status !== 403) {
+				showError(error.message || "Gagal mempublikasikan kuis");
+			}
 			throw error;
 		} finally {
 			setLoading(false);
@@ -356,7 +369,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 			await kuisDetailService.closeKuis(kuisId);
 			showSuccess("Kuis berhasil ditutup");
 		} catch (error: any) {
-			showError(error.message || "Gagal menutup kuis");
+			if (error.response?.status !== 401 && error.response?.status !== 403) {
+				showError(error.message || "Gagal menutup kuis");
+			}
 			throw error;
 		} finally {
 			setLoading(false);
@@ -370,7 +385,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 				await kuisDetailService.allowRetake(kuisId, pesertaDidikId);
 				showSuccess("Pengulangan kuis diizinkan");
 			} catch (error: any) {
-				showError(error.message || "Gagal mengizinkan pengulangan");
+				if (error.response?.status !== 401 && error.response?.status !== 403) {
+					showError(error.message || "Gagal mengizinkan pengulangan");
+				}
 				throw error;
 			} finally {
 				setLoading(false);
@@ -390,7 +407,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 				);
 				showSuccess("Deadline berhasil diperpanjang");
 			} catch (error: any) {
-				showError(error.message || "Gagal memperpanjang deadline");
+				if (error.response?.status !== 401 && error.response?.status !== 403) {
+					showError(error.message || "Gagal memperpanjang deadline");
+				}
 				throw error;
 			} finally {
 				setLoading(false);
@@ -405,7 +424,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 			setLoading(true);
 			return await kuisDetailService.getKuisStatistics(kuisId);
 		} catch (error: any) {
-			showError(error.message || "Gagal memuat statistik");
+			if (error.response?.status !== 401 && error.response?.status !== 403) {
+				showError(error.message || "Gagal memuat statistik");
+			}
 			throw error;
 		} finally {
 			setLoading(false);
@@ -421,7 +442,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 					pesertaDidikId,
 				);
 			} catch (error: any) {
-				showError(error.message || "Gagal memuat skor");
+				if (error.response?.status !== 401 && error.response?.status !== 403) {
+					showError(error.message || "Gagal memuat skor");
+				}
 				throw error;
 			} finally {
 				setLoading(false);
@@ -445,7 +468,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 			document.body.removeChild(a);
 			showSuccess("File berhasil diunduh");
 		} catch (error: any) {
-			showError(error.message || "Gagal mengunduh file");
+			if (error.response?.status !== 401 && error.response?.status !== 403) {
+				showError(error.message || "Gagal mengunduh file");
+			}
 		} finally {
 			setLoading(false);
 		}
@@ -456,7 +481,9 @@ export const useKuisDetail = (kuisId: number, materiId: number) => {
 			setLoading(true);
 			return await kuisDetailService.generateKuisReport(kuisId);
 		} catch (error: any) {
-			showError(error.message || "Gagal membuat laporan");
+			if (error.response?.status !== 401 && error.response?.status !== 403) {
+				showError(error.message || "Gagal membuat laporan");
+			}
 			throw error;
 		} finally {
 			setLoading(false);

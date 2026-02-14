@@ -1,10 +1,11 @@
 "use client";
 
-import React, { useState, useEffect, useCallback } from "react";
+import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
 import { useNotification } from "@/hooks/useNotification";
+import { RichTextEditor } from "@/components/RichTextEditor";
 import {
 	SuccessToast,
 	ErrorToast,
@@ -38,6 +39,9 @@ interface KontenMateri {
 	judul: string;
 	kontenTeks?: string;
 	filePath?: string;
+	fileName?: string;
+	fileType?: string;
+	convertedPdfPath?: string;
 	linkVideo?: string;
 	createdAt?: string;
 }
@@ -141,6 +145,10 @@ export default function GuruMateriDetailPage() {
 	const [savingTugas, setSavingTugas] = useState(false);
 	const [savingKuis, setSavingKuis] = useState(false);
 
+	// State untuk Image Upload di Text Editor
+	const [uploadingImage, setUploadingImage] = useState(false);
+	const imageInputRef = useRef<HTMLInputElement>(null);
+
 	// ============= FETCH FUNCTIONS =============
 	const fetchMateriDetail = useCallback(async () => {
 		try {
@@ -241,6 +249,175 @@ export default function GuruMateriDetailPage() {
 		fetchKonten,
 		fetchTugas,
 	]);
+
+	// ============= IMAGE HANDLER FUNCTIONS =============
+	const handleUploadImage = async (file: File) => {
+		if (!file) return;
+
+		// Validate file type
+		const allowedTypes = [
+			"image/jpeg",
+			"image/png",
+			"image/jpg",
+			"image/gif",
+			"image/webp",
+		];
+		if (!allowedTypes.includes(file.type)) {
+			showError("Hanya file gambar (JPG, PNG, GIF, WebP) yang diizinkan");
+			return;
+		}
+
+		// Validate file size (max 5MB)
+		if (file.size > 5 * 1024 * 1024) {
+			showError("Ukuran gambar tidak boleh lebih dari 5 MB");
+			return;
+		}
+
+		setUploadingImage(true);
+		try {
+			const formData = new FormData();
+			formData.append("file", file);
+
+			const response = await fetch(
+				`${process.env.NEXT_PUBLIC_API_URL}/elearning/upload/image`,
+				{
+					method: "POST",
+					headers: { Authorization: `Bearer ${token}` },
+					body: formData,
+				},
+			);
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				showError(errorData.message || "Gagal upload gambar");
+				return;
+			}
+
+			const uploadedImage = await response.json();
+			insertImageIntoText(uploadedImage.data.imageUrl);
+			showSuccess("Gambar berhasil diunggah dan ditambahkan");
+		} catch (error) {
+			console.error("Error uploading image:", error);
+			showError("Terjadi kesalahan saat upload gambar");
+		} finally {
+			setUploadingImage(false);
+			if (imageInputRef.current) {
+				imageInputRef.current.value = "";
+			}
+		}
+	};
+
+	const insertImageIntoText = (imageUrl: string) => {
+		const textarea = document.getElementById(
+			"konten-textarea",
+		) as HTMLTextAreaElement;
+		if (textarea) {
+			const start = textarea.selectionStart;
+			const end = textarea.selectionEnd;
+			const text = kontenForm.kontenTeks || "";
+			const before = text.substring(0, start);
+			const after = text.substring(end);
+			const markdownImage = `\n![Image](${imageUrl})\n`;
+
+			setKontenForm({
+				...kontenForm,
+				kontenTeks: before + markdownImage + after,
+			});
+
+			// Focus textarea and move cursor after image
+			setTimeout(() => {
+				textarea.focus();
+				textarea.setSelectionRange(
+					before.length + markdownImage.length,
+					before.length + markdownImage.length,
+				);
+			}, 0);
+		}
+	};
+
+	const handleUploadImageEdit = async (file: File) => {
+		if (!file) return;
+
+		// Validate file type
+		const allowedTypes = [
+			"image/jpeg",
+			"image/png",
+			"image/jpg",
+			"image/gif",
+			"image/webp",
+		];
+		if (!allowedTypes.includes(file.type)) {
+			showError("Hanya file gambar (JPG, PNG, GIF, WebP) yang diizinkan");
+			return;
+		}
+
+		// Validate file size (max 5MB)
+		if (file.size > 5 * 1024 * 1024) {
+			showError("Ukuran gambar tidak boleh lebih dari 5 MB");
+			return;
+		}
+
+		setUploadingImage(true);
+		try {
+			const formData = new FormData();
+			formData.append("file", file);
+
+			const response = await fetch(
+				`${process.env.NEXT_PUBLIC_API_URL}/elearning/upload/image`,
+				{
+					method: "POST",
+					headers: { Authorization: `Bearer ${token}` },
+					body: formData,
+				},
+			);
+
+			if (!response.ok) {
+				const errorData = await response.json();
+				showError(errorData.message || "Gagal upload gambar");
+				return;
+			}
+
+			const uploadedImage = await response.json();
+			insertImageIntoTextEdit(uploadedImage.data.imageUrl);
+			showSuccess("Gambar berhasil diunggah dan ditambahkan");
+		} catch (error) {
+			console.error("Error uploading image:", error);
+			showError("Terjadi kesalahan saat upload gambar");
+		} finally {
+			setUploadingImage(false);
+			if (imageInputRef.current) {
+				imageInputRef.current.value = "";
+			}
+		}
+	};
+
+	const insertImageIntoTextEdit = (imageUrl: string) => {
+		const textarea = document.getElementById(
+			"edit-konten-textarea",
+		) as HTMLTextAreaElement;
+		if (textarea) {
+			const start = textarea.selectionStart;
+			const end = textarea.selectionEnd;
+			const text = editKontenForm.kontenTeks || "";
+			const before = text.substring(0, start);
+			const after = text.substring(end);
+			const markdownImage = `\n![Image](${imageUrl})\n`;
+
+			setEditKontenForm({
+				...editKontenForm,
+				kontenTeks: before + markdownImage + after,
+			});
+
+			// Focus textarea and move cursor after image
+			setTimeout(() => {
+				textarea.focus();
+				textarea.setSelectionRange(
+					before.length + markdownImage.length,
+					before.length + markdownImage.length,
+				);
+			}, 0);
+		}
+	};
 
 	// ============= RENCANA FUNCTIONS =============
 	const handleSaveRencana = async () => {
@@ -373,6 +550,46 @@ export default function GuruMateriDetailPage() {
 		setKontenFile(null);
 	};
 
+	// ============= IMAGE UPLOAD HANDLER =============
+	const handleImageUploadForEditor = async (file: File): Promise<string> => {
+		// Validate file type
+		const allowedTypes = [
+			"image/jpeg",
+			"image/png",
+			"image/jpg",
+			"image/gif",
+			"image/webp",
+		];
+		if (!allowedTypes.includes(file.type)) {
+			throw new Error("Hanya file gambar (JPG, PNG, GIF, WebP) yang diizinkan");
+		}
+
+		// Validate file size (max 5MB)
+		if (file.size > 5 * 1024 * 1024) {
+			throw new Error("Ukuran gambar tidak boleh lebih dari 5 MB");
+		}
+
+		const formData = new FormData();
+		formData.append("file", file);
+
+		const baseUrl =
+			process.env.NEXT_PUBLIC_API_URL?.replace("/api", "") ||
+			"http://localhost:3001";
+		const response = await fetch(`${baseUrl}/elearning/upload/image`, {
+			method: "POST",
+			headers: { Authorization: `Bearer ${token}` },
+			body: formData,
+		});
+
+		if (!response.ok) {
+			const errorData = await response.json();
+			throw new Error(errorData.message || "Gagal upload gambar");
+		}
+
+		const uploadedImage = await response.json();
+		return uploadedImage.data.imageUrl;
+	};
+
 	const handleSaveKonten = async () => {
 		if (!kontenForm.judul.trim()) {
 			showError("Judul konten harus diisi");
@@ -399,6 +616,9 @@ export default function GuruMateriDetailPage() {
 		try {
 			// Step 1: Upload file jika ada
 			let filePath = null;
+			let fileName = null;
+			let fileType = null;
+			let convertedPdfPath = null;
 			if (kontenFile) {
 				const fileFormData = new FormData();
 				fileFormData.append("file", kontenFile);
@@ -423,6 +643,9 @@ export default function GuruMateriDetailPage() {
 
 				const uploadedFile = await uploadResponse.json();
 				filePath = uploadedFile.data.filePath;
+				fileName = uploadedFile.data.fileName;
+				fileType = uploadedFile.data.fileType;
+				convertedPdfPath = uploadedFile.data.convertedPdfPath || null;
 				setUploadProgress(75);
 			}
 
@@ -434,6 +657,9 @@ export default function GuruMateriDetailPage() {
 				kontenTeks: kontenForm.kontenTeks || "",
 				linkVideo: kontenForm.linkVideo || "",
 				filePath: filePath,
+				fileName: fileName,
+				fileType: fileType,
+				convertedPdfPath: convertedPdfPath,
 			};
 
 			const response = await fetch(
@@ -503,6 +729,9 @@ export default function GuruMateriDetailPage() {
 		try {
 			// Step 1: Upload file jika ada file baru
 			let filePath = editingKonten?.filePath || null;
+			let fileName = editingKonten?.fileName || null;
+			let fileType = editingKonten?.fileType || null;
+			let convertedPdfPath = editingKonten?.convertedPdfPath || null;
 			if (kontenFile) {
 				const fileFormData = new FormData();
 				fileFormData.append("file", kontenFile);
@@ -527,6 +756,9 @@ export default function GuruMateriDetailPage() {
 
 				const uploadedFile = await uploadResponse.json();
 				filePath = uploadedFile.data.filePath;
+				fileName = uploadedFile.data.fileName;
+				fileType = uploadedFile.data.fileType;
+				convertedPdfPath = uploadedFile.data.convertedPdfPath || null;
 				setUploadProgress(75);
 			}
 
@@ -537,6 +769,9 @@ export default function GuruMateriDetailPage() {
 				kontenTeks: editKontenForm.kontenTeks || "",
 				linkVideo: editKontenForm.linkVideo || "",
 				filePath: filePath,
+				fileName: fileName,
+				fileType: fileType,
+				convertedPdfPath: convertedPdfPath,
 			};
 
 			const response = await fetch(
@@ -1173,17 +1408,17 @@ export default function GuruMateriDetailPage() {
 												<label className="block text-sm font-medium text-gray-700 mb-1">
 													Isi Teks
 												</label>
-												<textarea
+												<RichTextEditor
 													value={kontenForm.kontenTeks || ""}
-													onChange={(e) =>
+													onChange={(content: string) =>
 														setKontenForm({
 															...kontenForm,
-															kontenTeks: e.target.value,
+															kontenTeks: content,
 														})
 													}
-													placeholder="Masukkan konten teks"
-													rows={4}
-													className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+													onImageUpload={handleImageUploadForEditor}
+													placeholder="Masukkan konten teks (drag & drop gambar atau gunakan tombol insert image)..."
+													isUploading={uploadingImage}
 												/>
 											</div>
 										)}
@@ -1349,16 +1584,17 @@ export default function GuruMateriDetailPage() {
 												<label className="block text-sm font-medium text-gray-700 mb-1">
 													Isi Teks
 												</label>
-												<textarea
+												<RichTextEditor
 													value={editKontenForm.kontenTeks || ""}
-													onChange={(e) =>
+													onChange={(content: string) =>
 														setEditKontenForm({
 															...editKontenForm,
-															kontenTeks: e.target.value,
+															kontenTeks: content,
 														})
 													}
-													rows={4}
-													className="w-full border border-gray-300 rounded-lg p-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-transparent resize-none"
+													onImageUpload={handleImageUploadForEditor}
+													placeholder="Masukkan konten teks (drag & drop gambar atau gunakan tombol insert image)..."
+													isUploading={uploadingImage}
 												/>
 											</div>
 										)}

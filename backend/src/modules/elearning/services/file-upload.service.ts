@@ -40,7 +40,13 @@ export class FileUploadService {
 	async uploadMateriFile(
 		file: Express.Multer.File,
 		folder: "materi" | "konten" | "tugas" = "materi",
-	): Promise<{ filePath: string; fileName: string; fileSize: number }> {
+	): Promise<{
+		filePath: string;
+		fileName: string;
+		fileSize: number;
+		fileType: string;
+		convertedPdfPath?: string;
+	}> {
 		if (!file) {
 			throw new BadRequestException("File harus diunggah");
 		}
@@ -78,8 +84,14 @@ export class FileUploadService {
 		const uuid = uuidv4().split("-")[0];
 		const fileName = `${timestamp}-${uuid}-${file.originalname}`;
 
-		// Create folder path
-		const folderPath = path.join(this.uploadDir, folder);
+		// Determine file type category (pdf, word, images, video)
+		const fileTypeCategory = this.getFileTypeCategory(
+			fileExtension.toLowerCase(),
+			file.mimetype,
+		);
+
+		// Create folder path with type category subdirectory
+		const folderPath = path.join(this.uploadDir, folder, fileTypeCategory);
 		if (!fs.existsSync(folderPath)) {
 			fs.mkdirSync(folderPath, { recursive: true });
 		}
@@ -89,12 +101,13 @@ export class FileUploadService {
 		fs.writeFileSync(filePath, file.buffer);
 
 		// Return relative path for storing in database
-		const relativePath = `/uploads/${folder}/${fileName}`;
+		const relativePath = `/uploads/${folder}/${fileTypeCategory}/${fileName}`;
 
 		return {
 			filePath: relativePath,
 			fileName: file.originalname,
 			fileSize: file.size,
+			fileType: file.mimetype,
 		};
 	}
 
@@ -147,6 +160,55 @@ export class FileUploadService {
 	 */
 	private getFileExtension(filename: string): string {
 		return filename.split(".").pop() || "";
+	}
+
+	/**
+	 * Determine file type category untuk subfolder organization
+	 * @param extension - File extension
+	 * @param mimeType - MIME type
+	 * @returns Category: 'pdf', 'word', 'images', or 'video'
+	 */
+	private getFileTypeCategory(extension: string, mimeType: string): string {
+		const ext = extension.toLowerCase();
+
+		// PDF files
+		if (ext === "pdf" || mimeType.includes("pdf")) {
+			return "pdf";
+		}
+
+		// Word documents
+		if (["doc", "docx"].includes(ext) || mimeType.includes("word")) {
+			return "word";
+		}
+
+		// Images
+		if (
+			["jpg", "jpeg", "png", "gif"].includes(ext) ||
+			mimeType.includes("image")
+		) {
+			return "images";
+		}
+
+		// Videos
+		if (
+			["mp4", "avi", "mkv", "mov", "webm"].includes(ext) ||
+			mimeType.includes("video")
+		) {
+			return "video";
+		}
+
+		// Excel/Spreadsheet files
+		if (["xls", "xlsx"].includes(ext) || mimeType.includes("spreadsheet")) {
+			return "spreadsheet";
+		}
+
+		// PowerPoint files
+		if (["ppt", "pptx"].includes(ext) || mimeType.includes("presentation")) {
+			return "presentation";
+		}
+
+		// Default: other
+		return "other";
 	}
 
 	/**

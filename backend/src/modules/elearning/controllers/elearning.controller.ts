@@ -15,6 +15,7 @@ import {
 	BadRequestException,
 	UseInterceptors,
 	UploadedFile,
+	ParseIntPipe,
 } from "@nestjs/common";
 import { Response } from "express";
 import { createReadStream } from "fs";
@@ -45,11 +46,18 @@ import {
 } from "../dtos/jawaban-tugas.dto";
 import { CreateNilaiTugasDto } from "../dtos/nilai-tugas.dto";
 import { CreateGuruMapelDto } from "../dtos/guru-mapel.dto";
+import { CreateSoalEsaiDto } from "../dtos/create-soal-esai.dto";
+import {
+	UpdateSoalEsaiDto,
+	SubmitJawabanEsaiDto,
+} from "../dtos/update-soal-esai.dto";
+import { PaginationQueryDto } from "../dtos/pagination.dto";
 import { Repository } from "typeorm";
 import { InjectRepository } from "@nestjs/typeorm";
 import { MataPelajaran } from "../entities/mata-pelajaran.entity";
 import { Guru } from "../../guru/entities/guru.entity";
 import { FileUploadService } from "../services/file-upload.service";
+import { DocumentConverterService } from "@/common/services/document-converter.service";
 
 @Controller("elearning")
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -65,6 +73,7 @@ export class ElearningController {
 		private readonly kontenService: KontenService,
 		private readonly elearningService: ElearningService,
 		private readonly fileUploadService: FileUploadService,
+		private readonly documentConverterService: DocumentConverterService,
 		@InjectRepository(MataPelajaran)
 		private readonly mataPelajaranRepo: Repository<MataPelajaran>,
 		@InjectRepository(Guru)
@@ -93,21 +102,6 @@ export class ElearningController {
 
 	// ============= GURU MATERI ENDPOINTS =============
 
-	@Post("guru/materi")
-	@Roles("guru")
-	async createMateriByGuru(@Request() req, @Body() dto: CreateMateriDto) {
-		// Fetch guru by userId
-		const guru = await this.guruRepo.findOne({
-			where: { userId: req.user.id },
-		});
-
-		if (!guru) {
-			throw new BadRequestException("Guru profile tidak ditemukan");
-		}
-
-		return this.materiService.create(guru.id, dto);
-	}
-
 	@Post("materi")
 	@Roles("guru")
 	async createMateri(@Request() req, @Body() dto: CreateMateriDto) {
@@ -128,6 +122,7 @@ export class ElearningController {
 	async getAllMateriByGuru(
 		@Request() req,
 		@Query("status") status?: MateriStatus,
+		@Query() pagination?: PaginationQueryDto,
 	) {
 		const guru = await this.guruRepo.findOne({
 			where: { userId: req.user.id },
@@ -137,7 +132,7 @@ export class ElearningController {
 			throw new BadRequestException("Guru profile tidak ditemukan");
 		}
 
-		return this.materiService.findByGuruId(guru.id, status);
+		return this.materiService.findByGuruId(guru.id, status, pagination);
 	}
 
 	@Get("guru/materi/:mapelId")
@@ -145,8 +140,9 @@ export class ElearningController {
 	getMateriByMapel(
 		@Param("mapelId") mapelId: number,
 		@Query("status") status?: MateriStatus,
+		@Query() pagination?: PaginationQueryDto,
 	) {
-		return this.materiService.findAll(mapelId, status);
+		return this.materiService.findAll(mapelId, status, pagination);
 	}
 
 	@Get("materi/:id")
@@ -270,21 +266,6 @@ export class ElearningController {
 
 	// ============= GURU TUGAS ENDPOINTS =============
 
-	@Post("guru/tugas")
-	@Roles("guru")
-	async createTugasByGuru(@Request() req, @Body() dto: CreateTugasDto) {
-		// Fetch guru by userId
-		const guru = await this.guruRepo.findOne({
-			where: { userId: req.user.id },
-		});
-
-		if (!guru) {
-			throw new BadRequestException("Guru profile tidak ditemukan");
-		}
-
-		return this.tugasService.create(guru.id, dto);
-	}
-
 	@Post("tugas")
 	@Roles("guru", "admin")
 	async createTugas(@Request() req, @Body() dto: CreateTugasDto) {
@@ -310,6 +291,7 @@ export class ElearningController {
 	async getAllTugasByGuru(
 		@Request() req,
 		@Query("status") status?: TugasStatus,
+		@Query() pagination?: PaginationQueryDto,
 	) {
 		const guru = await this.guruRepo.findOne({
 			where: { userId: req.user.id },
@@ -319,7 +301,7 @@ export class ElearningController {
 			throw new BadRequestException("Guru profile tidak ditemukan");
 		}
 
-		return this.tugasService.findByGuruId(guru.id, status);
+		return this.tugasService.findByGuruId(guru.id, status, pagination);
 	}
 
 	@Post("materi/:materiId/tugas")
@@ -336,8 +318,9 @@ export class ElearningController {
 	getTugasByMateri(
 		@Param("materiId") materiId: number,
 		@Query("status") status?: TugasStatus,
+		@Query() pagination?: PaginationQueryDto,
 	) {
-		return this.tugasService.findAll(materiId, status);
+		return this.tugasService.findAll(materiId, status, pagination);
 	}
 
 	@Get("materi/:materiId/tugas")
@@ -345,8 +328,9 @@ export class ElearningController {
 	getTugasByMateriAll(
 		@Param("materiId") materiId: number,
 		@Query("status") status?: TugasStatus,
+		@Query() pagination?: PaginationQueryDto,
 	) {
-		return this.tugasService.findAll(materiId, status);
+		return this.tugasService.findAll(materiId, status, pagination);
 	}
 
 	@Get("tugas/:id")
@@ -393,72 +377,47 @@ export class ElearningController {
 
 	@Post("tugas/:id/upload")
 	@Roles("guru", "admin")
-	@UseInterceptors(
-		FileInterceptor("file", {
-			storage: diskStorage({
-				destination: "uploads/tugas",
-				filename: (req, file, cb) => {
-					const fileName = `${Date.now()}-${file.originalname}`;
-					cb(null, fileName);
-				},
-			}),
-			limits: { fileSize: 20 * 1024 * 1024 }, // 20MB
-			fileFilter: (req, file, cb) => {
-				const allowedMimes = [
-					"application/pdf",
-					"application/msword",
-					"application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-					"image/jpeg",
-					"image/png",
-					"image/jpg",
-				];
-				if (allowedMimes.includes(file.mimetype)) {
-					cb(null, true);
-				} else {
-					cb(
-						new Error("File type tidak diizinkan (PDF, Word, atau Foto)"),
-						false,
-					);
-				}
-			},
-		}),
-	)
+	@UseInterceptors(FileInterceptor("file"))
 	async uploadTugasFile(
 		@Request() req,
 		@Param("id") id: number,
 		@UploadedFile() file: Express.Multer.File,
 	) {
 		if (!file) {
-			throw new BadRequestException("File tidak ditemukan");
+			throw new BadRequestException("File harus diunggah");
 		}
 
-		console.log(
-			`[FILE UPLOAD] User: ${req.user.id}, Role: ${req.user.role}, Tugas ID: ${id}, File: ${file.originalname}`,
-		);
+		try {
+			console.log(
+				`[FILE UPLOAD] User: ${req.user.id}, Role: ${req.user.role}, Tugas ID: ${id}, File: ${file.originalname}`,
+			);
 
-		// Admin can upload for any tugas, guru only for their own
-		if (req.user.role === "admin") {
-			console.log(`[FILE UPLOAD] Admin uploading for tugas ${id}`);
-			const result = await this.tugasService.updateFileAdmin(id, file);
+			// Use FileUploadService for consistent file handling
+			const result = await this.fileUploadService.uploadMateriFile(
+				file,
+				"tugas",
+			);
+
+			// Admin can upload for any tugas, guru only for their own
+			if (req.user.role === "admin") {
+				console.log(`[FILE UPLOAD] Admin uploading for tugas ${id}`);
+				await this.tugasService.updateFileAdmin(id, result);
+			} else {
+				console.log(
+					`[FILE UPLOAD] Guru ${req.user.guruId} uploading for tugas ${id}`,
+				);
+				await this.tugasService.updateFile(id, req.user.guruId, result);
+			}
+
 			return {
 				success: true,
 				message: "File berhasil diupload",
 				data: result,
 			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			throw new BadRequestException(`Gagal upload file: ${message}`);
 		}
-		console.log(
-			`[FILE UPLOAD] Guru ${req.user.guruId} uploading for tugas ${id}`,
-		);
-		const result = await this.tugasService.updateFile(
-			id,
-			req.user.guruId,
-			file,
-		);
-		return {
-			success: true,
-			message: "File berhasil diupload",
-			data: result,
-		};
 	}
 
 	@Get("tugas/:id/download")
@@ -537,14 +496,42 @@ export class ElearningController {
 
 	@Get("guru/tugas/:tugasId/jawaban")
 	@Roles("guru")
-	getJawabanByTugas(@Param("tugasId") tugasId: number) {
-		return this.jawabanService.getJawabanForGrading(tugasId);
+	async getJawabanByTugas(@Param("tugasId") tugasId: number) {
+		console.log(`\n[ENDPOINT] GET /guru/tugas/${tugasId}/jawaban`);
+		try {
+			const result = await this.jawabanService.getJawabanForGrading(tugasId);
+			console.log(
+				`[ENDPOINT] Returning ${result.length} submissions for tugasId ${tugasId}`,
+			);
+			return {
+				success: true,
+				data: result,
+				total: result.length,
+			};
+		} catch (error) {
+			console.error(`[ENDPOINT] Error getting jawaban by tugas:`, error);
+			throw error;
+		}
 	}
 
 	@Get("admin/tugas/:tugasId/jawaban")
 	@Roles("admin")
-	getJawabanByTugasAdmin(@Param("tugasId") tugasId: number) {
-		return this.jawabanService.getJawabanForGrading(tugasId);
+	async getJawabanByTugasAdmin(@Param("tugasId") tugasId: number) {
+		console.log(`\n[ENDPOINT] GET /admin/tugas/${tugasId}/jawaban`);
+		try {
+			const result = await this.jawabanService.getJawabanForGrading(tugasId);
+			console.log(
+				`[ENDPOINT] Returning ${result.length} submissions for tugasId ${tugasId}`,
+			);
+			return {
+				success: true,
+				data: result,
+				total: result.length,
+			};
+		} catch (error) {
+			console.error(`[ENDPOINT] Error getting jawaban by tugas:`, error);
+			throw error;
+		}
 	}
 
 	@Get("jawaban/:id")
@@ -639,6 +626,201 @@ export class ElearningController {
 		return this.jawabanService.update(id, req.user.id, dto);
 	}
 
+	@Post("jawaban/upload")
+	@Roles("siswa")
+	@UseInterceptors(FileInterceptor("file"))
+	async uploadJawabanFile(
+		@Request() req,
+		@UploadedFile() file: Express.Multer.File,
+		@Body() body: any,
+	) {
+		if (!file) {
+			throw new BadRequestException("File harus diunggah");
+		}
+
+		try {
+			const tugasId = parseInt(body.tugasId);
+			console.log(
+				`[JAWABAN UPLOAD] User: ${req.user.id}, Tugas ID: ${tugasId}, File: ${file.originalname}`,
+			);
+
+			// Upload file
+			const fileResult = await this.fileUploadService.uploadMateriFile(
+				file,
+				"tugas",
+			);
+
+			// Create jawaban record with file path
+			const jawabanDto = {
+				tugasId,
+				filePath: fileResult.filePath,
+				tipeFile: fileResult.fileType,
+				fileName: fileResult.fileName,
+			};
+
+			const jawaban = await this.jawabanService.create(req.user.id, jawabanDto);
+
+			// Automatically submit (mark as SUBMITTED) after file upload
+			const submittedJawaban = await this.jawabanService.submit(
+				jawaban.id,
+				req.user.id,
+			);
+
+			return {
+				success: true,
+				message: "Jawaban berhasil diupload dan disubmit",
+				data: submittedJawaban,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			throw new BadRequestException(`Gagal upload jawaban: ${message}`);
+		}
+	}
+
+	@Put("jawaban/:id/upload")
+	@Roles("siswa")
+	@UseInterceptors(FileInterceptor("file"))
+	async updateJawabanFile(
+		@Request() req,
+		@Param("id", ParseIntPipe) id: number,
+		@UploadedFile() file: Express.Multer.File,
+	) {
+		if (!file) {
+			throw new BadRequestException("File harus diunggah");
+		}
+
+		try {
+			console.log(
+				`[JAWABAN UPDATE] User: ${req.user.id}, Jawaban ID: ${id}, File: ${file.originalname}`,
+			);
+
+			// Verify jawaban exists and belongs to student
+			const jawaban = await this.jawabanService.findById(id);
+			if (!jawaban) {
+				throw new BadRequestException("Jawaban tidak ditemukan");
+			}
+
+			// Verify ownership
+			if (jawaban.pesertaDidikId !== req.user.id) {
+				throw new BadRequestException(
+					"Anda tidak memiliki akses untuk mengubah jawaban ini",
+				);
+			}
+
+			// Upload new file
+			const fileResult = await this.fileUploadService.uploadMateriFile(
+				file,
+				"tugas",
+			);
+
+			// Update jawaban with new file using dedicated file update method
+			const updatedJawaban = await this.jawabanService.updateFile(
+				id,
+				req.user.id,
+				{
+					filePath: fileResult.filePath,
+					tipeFile: fileResult.fileType,
+					fileName: fileResult.fileName,
+				},
+			);
+
+			console.log(
+				`[JAWABAN UPDATE] File updated, status before submit: ${updatedJawaban.statusSubmisi}`,
+			);
+
+			// Ensure jawaban is submitted after file update
+			const submittedJawaban = await this.jawabanService.submit(
+				id,
+				req.user.id,
+			);
+
+			console.log(
+				`[JAWABAN UPDATE] Final status after submit: ${submittedJawaban.statusSubmisi}`,
+			);
+
+			return {
+				success: true,
+				message: "File jawaban berhasil diperbarui dan disubmit",
+				data: submittedJawaban,
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			throw new BadRequestException(`Gagal update file jawaban: ${message}`);
+		}
+	}
+
+	@Get("jawaban/:id/download")
+	@Roles("siswa", "guru", "admin")
+	async downloadJawabanFile(
+		@Param("id", ParseIntPipe) id: number,
+		@Res() res: Response,
+	) {
+		try {
+			const jawaban = await this.jawabanService.findById(id);
+			if (!jawaban || !jawaban.filePath) {
+				return res.status(404).json({ message: "File tidak ditemukan" });
+			}
+
+			const filePath = join(process.cwd(), jawaban.filePath);
+			const stream = createReadStream(filePath);
+			res.setHeader(
+				"Content-Type",
+				jawaban.tipeFile || "application/octet-stream",
+			);
+			res.setHeader(
+				"Content-Disposition",
+				`attachment; filename="${jawaban.fileName}"`,
+			);
+			stream.pipe(res);
+		} catch (error) {
+			return res.status(500).json({ message: "Gagal mengunduh file" });
+		}
+	}
+
+	@Delete("jawaban/:id")
+	@Roles("siswa", "guru", "admin")
+	async deleteJawaban(@Request() req, @Param("id", ParseIntPipe) id: number) {
+		const jawaban = await this.jawabanService.findById(id);
+
+		// Only allow student to delete their own answer, or teacher/admin to delete any
+		if (req.user.role === "siswa" && jawaban.pesertaDidikId !== req.user.id) {
+			throw new BadRequestException(
+				"Anda tidak memiliki akses untuk menghapus jawaban ini",
+			);
+		}
+
+		await this.jawabanService.delete(id, jawaban.pesertaDidikId);
+		return { success: true, message: "Jawaban berhasil dihapus" };
+	}
+
+	@Delete("jawaban-esai/:id")
+	@Roles("siswa", "guru", "admin")
+	async deleteJawabanEsai(
+		@Request() req,
+		@Param("id", ParseIntPipe) id: number,
+	) {
+		return this.elearningService.deleteJawabanEsai(
+			id,
+			req.user.id,
+			req.user.role,
+		);
+	}
+
+	@Get("siswa/:siswaId/materi/:materiId/jawaban-count")
+	@Roles("siswa")
+	async getJawabanCountByMateri(
+		@Request() req,
+		@Param("siswaId", ParseIntPipe) siswaId: number,
+		@Param("materiId", ParseIntPipe) materiId: number,
+	) {
+		// Ensure student can only get their own count
+		if (req.user.id !== siswaId) {
+			throw new BadRequestException("Anda tidak memiliki akses ke data ini");
+		}
+
+		return await this.jawabanService.getJawabanCountByMateri(siswaId, materiId);
+	}
+
 	@Get("siswa/riwayat")
 	@Roles("siswa")
 	getSiswaHistory(@Request() req) {
@@ -704,8 +886,8 @@ export class ElearningController {
 
 	@Get("admin/materi")
 	@Roles("admin")
-	getAllMateriAdmin() {
-		return this.materiService.findAllForAdmin();
+	getAllMateriAdmin(@Query() pagination?: PaginationQueryDto) {
+		return this.materiService.findAllForAdmin(pagination);
 	}
 
 	@Post("admin/materi")
@@ -796,7 +978,8 @@ export class ElearningController {
 				data: result,
 			};
 		} catch (error) {
-			throw new BadRequestException(`Gagal upload file: ${error.message}`);
+			const message = error instanceof Error ? error.message : "Unknown error";
+			throw new BadRequestException(`Gagal upload file: ${message}`);
 		}
 	}
 
@@ -813,12 +996,78 @@ export class ElearningController {
 				file,
 				"konten",
 			);
+
+			// Auto-convert Word documents to PDF for preview
+			if (result.fileType && result.fileType.includes("word")) {
+				console.log(
+					`[uploadKontenFile] Converting Word file: ${result.filePath}`,
+				);
+				const pdfPath = await this.documentConverterService.convertWordToPdf(
+					result.filePath,
+				);
+				console.log(`[uploadKontenFile] Conversion result: ${pdfPath}`);
+				if (pdfPath) {
+					result.convertedPdfPath = pdfPath;
+				}
+			}
+
 			return {
 				message: "File berhasil diunggah",
 				data: result,
 			};
 		} catch (error) {
-			throw new BadRequestException(`Gagal upload file: ${error.message}`);
+			const message = error instanceof Error ? error.message : "Unknown error";
+			throw new BadRequestException(`Gagal upload file: ${message}`);
+		}
+	}
+
+	@Post("upload/image")
+	@Roles("guru", "admin")
+	@UseInterceptors(FileInterceptor("file"))
+	async uploadImage(@UploadedFile() file: Express.Multer.File) {
+		if (!file) {
+			throw new BadRequestException("File gambar harus diunggah");
+		}
+
+		try {
+			// Validate file type
+			const allowedImageTypes = [
+				"image/jpeg",
+				"image/png",
+				"image/jpg",
+				"image/gif",
+				"image/webp",
+			];
+			if (!allowedImageTypes.includes(file.mimetype)) {
+				throw new BadRequestException(
+					"Hanya file gambar (JPG, PNG, GIF, WebP) yang diizinkan",
+				);
+			}
+
+			// Validate file size (max 5MB for images)
+			const maxSize = 5 * 1024 * 1024;
+			if (file.size > maxSize) {
+				throw new BadRequestException(
+					"Ukuran gambar tidak boleh lebih dari 5 MB",
+				);
+			}
+
+			const result = await this.fileUploadService.uploadMateriFile(
+				file,
+				"konten",
+			);
+
+			return {
+				message: "Gambar berhasil diunggah",
+				data: {
+					imageUrl: result.filePath,
+					fileName: result.fileName,
+					fileType: result.fileType,
+				},
+			};
+		} catch (error) {
+			const message = error instanceof Error ? error.message : "Unknown error";
+			throw new BadRequestException(`Gagal upload gambar: ${message}`);
 		}
 	}
 
@@ -835,7 +1084,7 @@ export class ElearningController {
 	// ============= SOAL ESAI ENDPOINTS (KUIS ESSAY) =============
 	@Post("soal-esai")
 	@Roles("guru", "admin")
-	async createSoalEsai(@Body() dto: any) {
+	async createSoalEsai(@Body() dto: CreateSoalEsaiDto) {
 		return this.elearningService.createSoalEsai(dto);
 	}
 
@@ -853,7 +1102,10 @@ export class ElearningController {
 
 	@Put("soal-esai/:id")
 	@Roles("guru", "admin")
-	async updateSoalEsai(@Param("id") id: number, @Body() dto: any) {
+	async updateSoalEsai(
+		@Param("id") id: number,
+		@Body() dto: UpdateSoalEsaiDto,
+	) {
 		return this.elearningService.updateSoalEsai(id, dto);
 	}
 
@@ -867,20 +1119,47 @@ export class ElearningController {
 	// ============= JAWABAN ESAI ENDPOINTS (KUIS ESSAY ANSWERS) =============
 	@Post("jawaban-esai")
 	@Roles("siswa")
-	async submitJawabanEsai(@Request() req, @Body() dto: any) {
-		return this.elearningService.createJawabanEsai(req.user.id, dto);
+	async submitJawabanEsai(@Request() req, @Body() dto: SubmitJawabanEsaiDto) {
+		console.log(`\n[ENDPOINT] POST /jawaban-esai from student ${req.user.id}`);
+		console.log(
+			`[ENDPOINT] Soal ID: ${dto.soalEsaiId}, Answer length: ${
+				dto.jawaban?.length || 0
+			}`,
+		);
+		const result = await this.elearningService.createJawabanEsai(
+			req.user.id,
+			dto,
+		);
+		console.log(`[ENDPOINT] ✅ Quiz answer submit completed`);
+		return result;
 	}
 
 	@Get("jawaban-esai/soal/:soalEsaiId")
-	@Roles("guru", "admin")
-	async getJawabanEsaiBySoal(@Param("soalEsaiId") soalEsaiId: number) {
+	@Roles("guru", "admin", "siswa")
+	async getJawabanEsaiBySoal(
+		@Request() req,
+		@Param("soalEsaiId") soalEsaiId: number,
+	) {
+		// If siswa, only return their own answer
+		if (req.user.role === "siswa") {
+			return this.elearningService.getJawabanEsaiBySoalForSiswa(
+				soalEsaiId,
+				req.user.id,
+			);
+		}
+		// If guru/admin, return all answers for grading
 		return this.elearningService.getJawabanEsaiBySoal(soalEsaiId);
 	}
 
 	@Get("jawaban-esai/tugas/:tugasId")
 	@Roles("guru", "admin")
 	async getJawabanEsaiByTugas(@Param("tugasId") tugasId: number) {
-		return this.elearningService.getJawabanEsaiByTugas(tugasId);
+		console.log(`\n[ENDPOINT] GET /jawaban-esai/tugas/${tugasId}`);
+		const result = await this.elearningService.getJawabanEsaiByTugas(tugasId);
+		console.log(
+			`[ENDPOINT] Returning ${result.data.length} grouped submissions for tugasId ${tugasId}`,
+		);
+		return result;
 	}
 
 	@Put("jawaban-esai/:id/nilai")
@@ -910,5 +1189,30 @@ export class ElearningController {
 		@Body() dto: { visible: boolean },
 	) {
 		return this.tugasService.updateVisibility(tugasId, dto.visible);
+	}
+
+	@Post("admin/fix-draft-submissions")
+	@Roles("admin")
+	async fixDraftSubmissions() {
+		const count = await this.jawabanService.fixDraftSubmissionsWithFiles();
+		return {
+			success: true,
+			message: `Fixed ${count} draft submissions with files`,
+			fixed: count,
+		};
+	}
+
+	@Get("admin/debug/tugas/:tugasId/jawaban-all")
+	@Roles("admin")
+	async debugGetAllJawabanByTugas(@Param("tugasId") tugasId: number) {
+		console.log(`\n[DEBUG] Getting ALL jawaban for tugasId: ${tugasId}`);
+		const jawaban = await this.jawabanService.findAllByTugasId(tugasId);
+		console.log(`[DEBUG] Found ${jawaban.length} total submissions`);
+		return {
+			success: true,
+			data: jawaban,
+			total: jawaban.length,
+			debug: "This shows ALL submissions regardless of status",
+		};
 	}
 }

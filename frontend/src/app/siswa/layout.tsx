@@ -1,9 +1,10 @@
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuthStore } from "@/store/auth.store";
+import { useSessionTimeout } from "@/hooks/useSessionTimeout";
 
 export default function SiswaLayout({
 	children,
@@ -13,7 +14,33 @@ export default function SiswaLayout({
 	const router = useRouter();
 	const pathname = usePathname();
 	const user = useAuthStore((state) => state.user);
+	const isLoading = useAuthStore((state) => state.isLoading);
+	const isAuthenticated = useAuthStore((state) => state.isAuthenticated);
 	const logout = useAuthStore((state) => state.logout);
+
+	// Track session timeout
+	useSessionTimeout();
+
+	useEffect(() => {
+		if (!isLoading && (!isAuthenticated || !user || user.role !== "siswa")) {
+			router.push("/unauthorized");
+		}
+	}, [user, router, isLoading, isAuthenticated]);
+
+	if (isLoading) {
+		return (
+			<div className="flex h-screen items-center justify-center bg-gray-100">
+				<div className="text-center">
+					<div className="inline-block h-8 w-8 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600"></div>
+					<p className="mt-2 text-gray-600">Memverifikasi akses...</p>
+				</div>
+			</div>
+		);
+	}
+
+	if (!isAuthenticated || !user || user.role !== "siswa") {
+		return null;
+	}
 
 	const handleLogout = () => {
 		logout();

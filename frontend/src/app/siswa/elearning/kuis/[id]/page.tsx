@@ -1,36 +1,10 @@
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useNotification } from "@/hooks/useNotification";
-
-interface SoalEsai {
-	id: number;
-	pertanyaan: string;
-	bobot: number;
-}
-
-interface Kuis {
-	id: number;
-	judulTugas: string;
-	deskripsi: string;
-	tanggalBuka: string;
-	tanggalDeadline: string;
-	materi?: {
-		id: number;
-		judulMateri: string;
-	};
-}
-
-interface JawabanEsai {
-	id: number;
-	soalEsaiId: number;
-	jawaban: string;
-	nilai?: number;
-	catatanGuru?: string;
-	sudahDinilai: boolean;
-}
+import { useKerjakanTugas } from "@/hooks/useKerjakanTugas";
 
 export default function SiswaKuisEssayPage() {
 	const params = useParams();
@@ -38,79 +12,43 @@ export default function SiswaKuisEssayPage() {
 	const { showSuccess, showError } = useNotification();
 	const kuisId = Number(params.id);
 
-	const [kuis, setKuis] = useState<Kuis | null>(null);
-	const [soalList, setSoalList] = useState<SoalEsai[]>([]);
-	const [jawabanMap, setJawabanMap] = useState<Map<number, JawabanEsai>>(
-		new Map(),
-	);
+	// Use the custom hook for task management
+	const {
+		taskDetail,
+		essayQuestions,
+		studentAnswers,
+		loading,
+		error,
+		isLate,
+		timeRemaining,
+		submitAllAnswers,
+		getAnswer,
+		formatDate,
+	} = useKerjakanTugas(kuisId);
+
 	const [formData, setFormData] = useState<{ [key: number]: string }>({});
-	const [loading, setLoading] = useState(true);
 	const [submitting, setSubmitting] = useState(false);
 	const [submitted, setSubmitted] = useState(false);
-	const [totalBobot, setTotalBobot] = useState(0);
 
-	const fetchKuisDetail = useCallback(async () => {
-		try {
-			setLoading(true);
-
-			// Fetch kuis info
-			const kuisRes = await fetch(`/api/elearning/tugas/${kuisId}`);
-			if (!kuisRes.ok) throw new Error("Gagal memuat detail kuis");
-			const kuisData = await kuisRes.json();
-			setKuis(kuisData);
-
-			// Fetch soal essay
-			const soalRes = await fetch(`/api/elearning/soal-esai/tugas/${kuisId}`);
-			if (soalRes.ok) {
-				const soalData = await soalRes.json();
-				setSoalList(soalData);
-
-				// Calculate total bobot
-				const total = soalData.reduce(
-					(sum: number, soal: SoalEsai) => sum + soal.bobot,
-					0,
-				);
-				setTotalBobot(total);
-
-				// Initialize form with existing answers
-				fetchJawaban(soalData);
-			}
-		} catch (error) {
-			showError("Gagal memuat detail kuis");
-			console.error(error);
-		} finally {
-			setLoading(false);
-		}
-	}, [kuisId, showError]);
-
+	// Initialize form data from answers
 	useEffect(() => {
-		fetchKuisDetail();
-	}, [fetchKuisDetail]);
-
-	const fetchJawaban = async (soalData: SoalEsai[]) => {
-		try {
-			const jawabanMap = new Map<number, JawabanEsai>();
-			let hasSubmitted = false;
-
-			for (const soal of soalData) {
-				const res = await fetch(`/api/elearning/jawaban-esai/soal/${soal.id}`);
-				if (res.ok) {
-					const data = await res.json();
-					jawabanMap.set(soal.id, data);
-					setFormData((prev) => ({
-						...prev,
-						[soal.id]: data.jawaban || "",
-					}));
-					if (data.jawaban) hasSubmitted = true;
-				}
-			}
-
-			setJawabanMap(jawabanMap);
-			setSubmitted(hasSubmitted);
-		} catch (error) {
-			console.error("Error fetching jawaban:", error);
+		if (essayQuestions.length > 0 && studentAnswers.size > 0) {
+			const initialData: { [key: number]: string } = {};
+			essayQuestions.forEach((soal) => {
+				const answer = studentAnswers.get(soal.id);
+				initialData[soal.id] = answer?.jawaban || "";
+			});
+			setFormData(initialData);
+			setSubmitted(studentAnswers.size > 0);
 		}
-	};
+	}, [essayQuestions, studentAnswers]);
+
+	// Show error if any
+	useEffect(() => {
+		if (error) {
+			showError(error);
+		}
+	}, [error, showError]);
 
 	const handleAnswerChange = (soalId: number, jawaban: string) => {
 		setFormData((prev) => ({
@@ -121,7 +59,9 @@ export default function SiswaKuisEssayPage() {
 
 	const handleSubmitAll = async () => {
 		// Validate all answers
-		const allAnswered = soalList.every((soal) => formData[soal.id]?.trim());
+		const allAnswered = essayQuestions.every((soal) =>
+			formData[soal.id]?.trim(),
+		);
 		if (!allAnswered) {
 			showError("Semua soal harus dijawab");
 			return;
@@ -137,29 +77,14 @@ export default function SiswaKuisEssayPage() {
 
 		try {
 			setSubmitting(true);
+			const answersToSubmit: { [key: number]: string } = {};
+			essayQuestions.forEach((soal) => {
+				answersToSubmit[soal.id] = formData[soal.id];
+			});
 
-			// Submit all answers
-			const submitPromises = soalList.map((soal) =>
-				fetch("/api/elearning/jawaban-esai", {
-					method: "POST",
-					headers: { "Content-Type": "application/json" },
-					body: JSON.stringify({
-						soalEsaiId: soal.id,
-						jawaban: formData[soal.id],
-					}),
-				}),
-			);
-
-			const results = await Promise.all(submitPromises);
-			const allSuccess = results.every((res) => res.ok);
-
-			if (!allSuccess) {
-				throw new Error("Beberapa jawaban gagal disubmit");
-			}
-
+			await submitAllAnswers(answersToSubmit);
 			showSuccess("Semua jawaban berhasil disubmit!");
 			setSubmitted(true);
-			await fetchKuisDetail();
 		} catch (error) {
 			showError("Gagal mensubmit jawaban");
 			console.error(error);
@@ -168,7 +93,7 @@ export default function SiswaKuisEssayPage() {
 		}
 	};
 
-	const formatDate = (dateStr: string) => {
+	const formatDateDisplay = (dateStr: string) => {
 		return new Date(dateStr).toLocaleDateString("id-ID", {
 			weekday: "long",
 			year: "numeric",
@@ -187,7 +112,7 @@ export default function SiswaKuisEssayPage() {
 		);
 	}
 
-	if (!kuis) {
+	if (!taskDetail) {
 		return (
 			<div className="min-h-screen flex items-center justify-center">
 				<div className="text-center">
@@ -205,7 +130,8 @@ export default function SiswaKuisEssayPage() {
 		);
 	}
 
-	const allAnswered = soalList.every((soal) => formData[soal.id]?.trim());
+	const allAnswered = essayQuestions.every((soal) => formData[soal.id]?.trim());
+	const totalBobot = essayQuestions.reduce((sum, soal) => sum + soal.bobot, 0);
 
 	return (
 		<div className="min-h-screen bg-gray-50">
@@ -221,10 +147,12 @@ export default function SiswaKuisEssayPage() {
 						</Link>
 					</div>
 					<h1 className="text-3xl font-bold text-gray-900 mb-2">
-						{kuis.judulTugas}
+						{taskDetail.judulTugas}
 					</h1>
-					{kuis.materi && (
-						<p className="text-gray-600">Materi: {kuis.materi.judulMateri}</p>
+					{taskDetail.materi && (
+						<p className="text-gray-600">
+							Materi: {taskDetail.materi.judulMateri}
+						</p>
 					)}
 				</div>
 			</div>
@@ -236,7 +164,7 @@ export default function SiswaKuisEssayPage() {
 						<div>
 							<div className="text-sm text-gray-600 mb-1">Jumlah Soal</div>
 							<div className="text-2xl font-bold text-blue-600">
-								{soalList.length}
+								{essayQuestions.length}
 							</div>
 						</div>
 						<div>
@@ -263,34 +191,54 @@ export default function SiswaKuisEssayPage() {
 								Tanggal Buka
 							</div>
 							<div className="text-gray-600 text-sm">
-								{formatDate(kuis.tanggalBuka)}
+								{formatDateDisplay(taskDetail.tanggalBuka)}
 							</div>
 						</div>
 						<div>
 							<div className="text-sm font-semibold text-gray-700 mb-1">
 								Deadline
 							</div>
-							<div className="text-gray-600 text-sm">
-								{formatDate(kuis.tanggalDeadline)}
+							<div
+								className={`text-gray-600 text-sm ${
+									isLate ? "text-red-600" : ""
+								}`}
+							>
+								{formatDateDisplay(taskDetail.tanggalDeadline)}
+								{isLate && (
+									<span className="ml-2 font-semibold">(Terlambat)</span>
+								)}
 							</div>
 						</div>
 					</div>
+
+					{/* Time Remaining */}
+					{!isLate && timeRemaining && (
+						<div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-200">
+							<p className="text-sm text-blue-700">
+								Waktu tersisa:{" "}
+								<span className="font-semibold">
+									{timeRemaining.days} hari {timeRemaining.hours} jam{" "}
+									{timeRemaining.minutes} menit
+								</span>
+							</p>
+						</div>
+					)}
 				</div>
 
 				{/* Deskripsi */}
-				{kuis.deskripsi && (
+				{taskDetail.deskripsi && (
 					<div className="bg-white rounded-lg shadow p-6 mb-8">
 						<h2 className="text-lg font-bold text-gray-900 mb-4">Instruksi</h2>
 						<p className="text-gray-700 whitespace-pre-wrap">
-							{kuis.deskripsi}
+							{taskDetail.deskripsi}
 						</p>
 					</div>
 				)}
 
 				{/* Soal Essay */}
 				<div className="space-y-6">
-					{soalList.map((soal, index) => {
-						const jawaban = jawabanMap.get(soal.id);
+					{essayQuestions.map((soal, index) => {
+						const jawaban = studentAnswers.get(soal.id);
 						const isAnswered = !!formData[soal.id]?.trim();
 
 						return (
@@ -387,14 +335,96 @@ export default function SiswaKuisEssayPage() {
 				)}
 
 				{submitted && (
-					<div className="mt-8 p-6 bg-green-50 rounded-lg border-l-4 border-green-600">
-						<h3 className="text-lg font-bold text-green-900 mb-2">
-							Jawaban Berhasil Disubmit
-						</h3>
-						<p className="text-green-700">
-							Guru akan mengoreksi jawaban Anda. Anda akan menerima notifikasi
-							ketika nilai sudah diinputkan.
-						</p>
+					<div className="mt-8 space-y-6">
+						<div className="p-6 bg-green-50 rounded-lg border-l-4 border-green-600">
+							<h3 className="text-lg font-bold text-green-900 mb-2">
+								Jawaban Berhasil Disubmit
+							</h3>
+							<p className="text-green-700 mb-4">
+								Guru akan mengoreksi jawaban Anda. Anda akan menerima notifikasi
+								ketika nilai sudah diinputkan.
+							</p>
+							<button
+								onClick={async () => {
+									if (
+										confirm(
+											"Apakah Anda yakin ingin menghapus semua jawaban? Anda akan bisa menjawab ulang.",
+										)
+									) {
+										try {
+											let allDeleted = true;
+											for (const [
+												soalId,
+												jawaban,
+											] of studentAnswers.entries()) {
+												try {
+													const res = await fetch(
+														`/api/elearning/jawaban-esai/${jawaban.id}`,
+														{
+															method: "DELETE",
+														},
+													);
+													if (!res.ok) {
+														allDeleted = false;
+													}
+												} catch (error) {
+													allDeleted = false;
+													console.error(
+														`Gagal hapus jawaban ${soalId}:`,
+														error,
+													);
+												}
+											}
+											if (allDeleted) {
+												showSuccess("Semua jawaban berhasil dihapus");
+												window.location.reload();
+											} else {
+												showError("Beberapa jawaban gagal dihapus");
+											}
+										} catch (error) {
+											showError("Gagal menghapus jawaban");
+											console.error(error);
+										}
+									}
+								}}
+								className="py-2 px-4 bg-red-600 hover:bg-red-700 text-white rounded-lg font-semibold transition-colors"
+							>
+								Hapus Semua Jawaban & Kerjakan Ulang
+							</button>
+						</div>
+
+						{/* Submission Summary */}
+						<div className="bg-white rounded-lg shadow p-6">
+							<h3 className="text-lg font-bold text-gray-900 mb-4">
+								Ringkasan Submission
+							</h3>
+							<div className="space-y-2">
+								{essayQuestions.map((soal, index) => {
+									const jawaban = studentAnswers.get(soal.id);
+									return (
+										<div
+											key={soal.id}
+											className="flex items-center justify-between p-3 bg-gray-50 rounded-lg border border-gray-200"
+										>
+											<div className="flex items-center gap-3">
+												<div className="w-6 h-6 rounded-full bg-green-600 text-white flex items-center justify-center text-xs font-bold">
+													✓
+												</div>
+												<span className="text-gray-700 font-medium">
+													Soal {index + 1}: {soal.pertanyaan.substring(0, 50)}
+													{soal.pertanyaan.length > 50 ? "..." : ""}
+												</span>
+											</div>
+											{jawaban?.sudahDinilai && (
+												<span className="text-xs font-semibold px-3 py-1 bg-green-200 text-green-800 rounded-full">
+													Dinilai: {jawaban.nilai}
+												</span>
+											)}
+										</div>
+									);
+								})}
+							</div>
+						</div>
 					</div>
 				)}
 			</div>

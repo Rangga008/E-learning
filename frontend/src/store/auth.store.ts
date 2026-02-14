@@ -8,11 +8,19 @@ interface AuthState {
 	token: string | null;
 	isAuthenticated: boolean;
 	isLoading: boolean;
+	showReLoginModal: boolean;
+	reLoginReason: "session_expired" | "token_invalid" | "unauthorized";
+	lastActivityTime: number;
 	setUser: (user: User | null) => void;
 	setToken: (token: string | null) => void;
 	logout: () => void;
 	clearSession: () => void;
 	restoreSession: () => void;
+	openReLoginModal: (
+		reason?: "session_expired" | "token_invalid" | "unauthorized",
+	) => void;
+	closeReLoginModal: () => void;
+	updateLastActivityTime: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -20,6 +28,9 @@ export const useAuthStore = create<AuthState>((set) => ({
 	token: null,
 	isAuthenticated: false,
 	isLoading: true,
+	showReLoginModal: false,
+	reLoginReason: "session_expired",
+	lastActivityTime: Date.now(),
 	setUser: (user) => {
 		set({ user, isAuthenticated: !!user });
 		if (typeof window !== "undefined") {
@@ -64,10 +75,20 @@ export const useAuthStore = create<AuthState>((set) => ({
 					user: JSON.parse(user),
 					isAuthenticated: true,
 					isLoading: false,
+					lastActivityTime: Date.now(),
 				});
 			} else {
 				set({ isLoading: false });
 			}
 		}
+	},
+	openReLoginModal: (reason = "session_expired") => {
+		set({ showReLoginModal: true, reLoginReason: reason });
+	},
+	closeReLoginModal: () => {
+		set({ showReLoginModal: false });
+	},
+	updateLastActivityTime: () => {
+		set({ lastActivityTime: Date.now() });
 	},
 }));

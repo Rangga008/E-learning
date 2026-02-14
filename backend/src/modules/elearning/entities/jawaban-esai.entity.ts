@@ -5,8 +5,10 @@ import {
 	ManyToOne,
 	CreateDateColumn,
 	UpdateDateColumn,
+	JoinColumn,
 } from "typeorm";
 import { SoalEsai } from "./soal-esai.entity";
+import { PesertaDidik } from "../../peserta-didik/entities/peserta-didik.entity";
 
 @Entity("jawaban_esai")
 export class JawabanEsai {
@@ -18,6 +20,10 @@ export class JawabanEsai {
 
 	@ManyToOne(() => SoalEsai)
 	soalEsai: SoalEsai;
+
+	@ManyToOne(() => PesertaDidik, { onDelete: "CASCADE" })
+	@JoinColumn({ name: "pesertaDidikId" })
+	pesertaDidik: PesertaDidik;
 
 	@Column()
 	soalEsaiId: number;

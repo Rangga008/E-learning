@@ -5,6 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { useAuthStore } from "@/store/auth.store";
 import { useNotification } from "@/hooks/useNotification";
+import { TaskDetailHeader } from "@/components/TaskDetailHeader";
 
 interface Tugas {
 	id: number;
@@ -12,6 +13,8 @@ interface Tugas {
 	judulTugas: string;
 	deskripsi: string;
 	tipe: "UPLOAD" | "ESAI";
+	tanggalBuka?: string;
+	tanggalDeadline?: string;
 	deadline?: string;
 	status: string;
 	createdAt: string;
@@ -110,7 +113,8 @@ export default function AdminKuisDetailPage() {
 	const [tugasEditForm, setTugasEditForm] = useState({
 		judulTugas: "",
 		deskripsi: "",
-		deadline: "",
+		tanggalBuka: "",
+		tanggalDeadline: "",
 	});
 	const [savingTugasEdit, setSavingTugasEdit] = useState(false);
 	const [savingStatus, setSavingStatus] = useState(false);
@@ -146,7 +150,8 @@ export default function AdminKuisDetailPage() {
 			setTugasEditForm({
 				judulTugas: tugasData.judulTugas,
 				deskripsi: tugasData.deskripsi,
-				deadline: tugasData.deadline || "",
+				tanggalBuka: tugasData.tanggalBuka || "",
+				tanggalDeadline: tugasData.tanggalDeadline || tugasData.deadline || "",
 			});
 
 			// Load soal esai
@@ -207,7 +212,10 @@ export default function AdminKuisDetailPage() {
 			}
 		} catch (error: any) {
 			console.error("🚨 Error in loadKuisDetail:", error);
-			showError("Error loading kuis details");
+			// Don't show error toast for auth errors (401/403) - modal will handle it
+			if (error.response?.status !== 401 && error.response?.status !== 403) {
+				showError("Error loading kuis details");
+			}
 			console.error(error);
 		} finally {
 			setLoading(false);
@@ -640,7 +648,8 @@ export default function AdminKuisDetailPage() {
 					body: JSON.stringify({
 						judulTugas: tugasEditForm.judulTugas,
 						deskripsi: tugasEditForm.deskripsi,
-						deadline: tugasEditForm.deadline || null,
+						tanggalBuka: tugasEditForm.tanggalBuka || null,
+						tanggalDeadline: tugasEditForm.tanggalDeadline || null,
 					}),
 				},
 			);
@@ -1225,15 +1234,32 @@ export default function AdminKuisDetailPage() {
 
 									<div>
 										<label className="block font-semibold text-gray-700 mb-2">
-											Deadline (Opsional)
+											Tanggal Buka (Mulai Dikerjakan)
 										</label>
 										<input
 											type="datetime-local"
-											value={tugasEditForm.deadline}
+											value={tugasEditForm.tanggalBuka}
 											onChange={(e) =>
 												setTugasEditForm({
 													...tugasEditForm,
-													deadline: e.target.value,
+													tanggalBuka: e.target.value,
+												})
+											}
+											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+										/>
+									</div>
+
+									<div>
+										<label className="block font-semibold text-gray-700 mb-2">
+											Tanggal Deadline (Batas Pengumpulan)
+										</label>
+										<input
+											type="datetime-local"
+											value={tugasEditForm.tanggalDeadline}
+											onChange={(e) =>
+												setTugasEditForm({
+													...tugasEditForm,
+													tanggalDeadline: e.target.value,
 												})
 											}
 											className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"

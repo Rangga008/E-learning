@@ -19,6 +19,18 @@ export class CreateKontenDto {
 	@IsOptional()
 	@IsString()
 	filePath?: string;
+
+	@IsOptional()
+	@IsString()
+	fileName?: string;
+
+	@IsOptional()
+	@IsString()
+	fileType?: string;
+
+	@IsOptional()
+	@IsString()
+	convertedPdfPath?: string;
 }
 
 export class UpdateKontenDto {
@@ -41,4 +53,16 @@ export class UpdateKontenDto {
 	@IsOptional()
 	@IsString()
 	filePath?: string;
+
+	@IsOptional()
+	@IsString()
+	fileName?: string;
+
+	@IsOptional()
+	@IsString()
+	fileType?: string;
+
+	@IsOptional()
+	@IsString()
+	convertedPdfPath?: string;
 }

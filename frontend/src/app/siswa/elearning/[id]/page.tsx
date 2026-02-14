@@ -25,6 +25,13 @@ interface Tugas {
 	status: "DRAFT" | "PUBLISHED" | "CLOSED";
 }
 
+interface MateriProgress {
+	[materiId: number]: {
+		taskCount: number;
+		completedCount: number;
+	};
+}
+
 export default function SiswaMapelDetailPage() {
 	const params = useParams();
 	const router = useRouter();
@@ -47,12 +54,13 @@ export default function SiswaMapelDetailPage() {
 	const [activeTab, setActiveTab] = useState<"materi" | "tugas">("materi");
 	const [materi, setMateri] = useState<Materi[]>([]);
 	const [tugas, setTugas] = useState<Tugas[]>([]);
+	const [materiProgress, setMateriProgress] = useState<MateriProgress>({});
 
 	// Fetch materi
 	const fetchMateri = useCallback(async () => {
 		try {
 			const response = await fetch(
-				`${process.env.NEXT_PUBLIC_API_URL}/elearning/materi?mapelId=${mapelId}`,
+				`${process.env.NEXT_PUBLIC_API_URL}/elearning/siswa/materi/${mapelId}`,
 				{
 					headers: { Authorization: `Bearer ${token}` },
 				},
@@ -115,6 +123,39 @@ export default function SiswaMapelDetailPage() {
 		}
 	}, [mapelId, token]);
 
+	// Fetch task count for each materi
+	const fetchTaskCountForMateri = useCallback(
+		async (materiId: number) => {
+			try {
+				if (!user?.id || !token) return;
+
+				const jawabanRes = await fetch(
+					`${process.env.NEXT_PUBLIC_API_URL}/elearning/siswa/${user.id}/materi/${materiId}/jawaban-count`,
+					{
+						headers: { Authorization: `Bearer ${token}` },
+					},
+				);
+
+				if (jawabanRes.ok) {
+					const jawabanData = await jawabanRes.json();
+					const taskCount = jawabanData.taskCount || 0;
+					const completedCount = jawabanData.completedCount || 0;
+
+					setMateriProgress((prev) => ({
+						...prev,
+						[materiId]: {
+							taskCount,
+							completedCount,
+						},
+					}));
+				}
+			} catch (error) {
+				console.error("Error loading task count:", error);
+			}
+		},
+		[token, user?.id],
+	);
+
 	useEffect(() => {
 		if (token) {
 			Promise.all([fetchMateri(), fetchTugas(), fetchMapelName()]).finally(() =>
@@ -123,12 +164,21 @@ export default function SiswaMapelDetailPage() {
 		}
 	}, [token, fetchMateri, fetchTugas, fetchMapelName]);
 
+	// Fetch task counts for each materi once materi is loaded
+	useEffect(() => {
+		materi.forEach((m) => {
+			if (!materiProgress[m.id]) {
+				fetchTaskCountForMateri(m.id);
+			}
+		});
+	}, [materi, materiProgress, fetchTaskCountForMateri]);
+
 	return (
 		<div className="min-h-screen bg-gradient-to-br from-purple-50 to-blue-50 p-6">
 			<div className="max-w-5xl mx-auto">
 				{/* Back Button */}
 				<button
-					onClick={() => router.back()}
+					onClick={() => router.push("/siswa/elearning")}
 					className="flex items-center gap-2 text-purple-600 hover:text-purple-700 mb-4 font-medium"
 				>
 					← Kembali
@@ -156,30 +206,6 @@ export default function SiswaMapelDetailPage() {
 					</p>
 				</div>
 
-				{/* Tabs */}
-				<div className="flex gap-4 mb-6 border-b border-gray-200">
-					<button
-						onClick={() => setActiveTab("materi")}
-						className={`px-6 py-3 font-semibold transition-all ${
-							activeTab === "materi"
-								? "border-b-2 border-purple-600 text-purple-600"
-								: "text-gray-600 hover:text-gray-900"
-						}`}
-					>
-						📚 Materi ({materi.length})
-					</button>
-					<button
-						onClick={() => setActiveTab("tugas")}
-						className={`px-6 py-3 font-semibold transition-all ${
-							activeTab === "tugas"
-								? "border-b-2 border-purple-600 text-purple-600"
-								: "text-gray-600 hover:text-gray-900"
-						}`}
-					>
-						✏️ Tugas ({tugas.length})
-					</button>
-				</div>
-
 				{/* Loading State */}
 				{loading && (
 					<div className="flex justify-center items-center h-64">
@@ -191,27 +217,55 @@ export default function SiswaMapelDetailPage() {
 				{!loading && activeTab === "materi" && (
 					<div className="space-y-4">
 						{materi.length > 0 ? (
-							materi.map((m, idx) => (
-								<Link
-									key={m.id}
-									href={`/siswa/materi/${m.id}`}
-									className="block"
-								>
-									<div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 p-6 border-l-4 border-purple-500 hover:border-purple-700 cursor-pointer">
-										<div className="flex items-start justify-between">
-											<div className="flex-1">
-												<h3 className="text-lg font-semibold text-gray-900">
-													{idx + 1}. {m.judulMateri}
-												</h3>
-												<p className="text-gray-600 mt-2 line-clamp-2">
-													{m.deskripsi}
-												</p>
+							materi.map((m, idx) => {
+								const progress = materiProgress[m.id];
+								const taskCount = progress?.taskCount || 0;
+								const completedCount = progress?.completedCount || 0;
+								const progressPercent =
+									taskCount > 0 ? (completedCount / taskCount) * 100 : 0;
+								return (
+									<Link
+										key={m.id}
+										href={`/siswa/elearning/materi/${m.id}`}
+										className="block"
+									>
+										<div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 p-6 border-l-4 border-purple-500 hover:border-purple-700 cursor-pointer">
+											<div className="flex items-start justify-between">
+												<div className="flex-1">
+													<h3 className="text-lg font-semibold text-gray-900">
+														{idx + 1}. {m.judulMateri}
+													</h3>
+													<p className="text-gray-600 mt-2 line-clamp-2">
+														{m.deskripsi}
+													</p>
+
+													{/* Progress Bar */}
+													{taskCount > 0 && (
+														<div className="mt-4">
+															<div className="flex items-center justify-between mb-2">
+																<span className="text-xs font-medium text-gray-700">
+																	Progress Tugas
+																</span>
+																<span className="text-xs font-semibold text-purple-600">
+																	{completedCount}/{taskCount} (
+																	{Math.round(progressPercent)}%)
+																</span>
+															</div>
+															<div className="w-full bg-gray-200 rounded-full h-2">
+																<div
+																	className="bg-gradient-to-r from-purple-500 to-blue-500 h-2 rounded-full transition-all duration-300"
+																	style={{ width: `${progressPercent}%` }}
+																></div>
+															</div>
+														</div>
+													)}
+												</div>
+												<span className="text-2xl ml-4">→</span>
 											</div>
-											<span className="text-2xl ml-4">→</span>
 										</div>
-									</div>
-								</Link>
-							))
+									</Link>
+								);
+							})
 						) : (
 							<div className="text-center py-12 bg-white rounded-lg">
 								<p className="text-gray-500 text-lg">
@@ -226,10 +280,10 @@ export default function SiswaMapelDetailPage() {
 					<div className="space-y-4">
 						{tugas.length > 0 ? (
 							tugas.map((t, idx) => (
-								<Link
+								<div
 									key={t.id}
-									href={`/siswa/tugas/${t.id}`}
-									className="block"
+									className="block opacity-50 cursor-not-allowed"
+									title="Buka tugas dari halaman materi"
 								>
 									<div className="bg-white rounded-lg shadow-md hover:shadow-lg transition-all duration-300 p-6 border-l-4 border-orange-500 hover:border-orange-700 cursor-pointer">
 										<div className="flex items-start justify-between">
@@ -260,7 +314,7 @@ export default function SiswaMapelDetailPage() {
 											<span className="text-2xl ml-4">→</span>
 										</div>
 									</div>
-								</Link>
+								</div>
 							))
 						) : (
 							<div className="text-center py-12 bg-white rounded-lg">
